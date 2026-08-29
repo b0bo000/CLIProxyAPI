@@ -30,6 +30,9 @@ auths/*
 
 # Documentation
 docs/*
+!docs/CPA-COMPATIBILITY-CHANGE-CONTROL.md
+!docs/change-cards/
+!docs/change-cards/**
 AGENTS.md
 CLAUDE.md
 GEMINI.md

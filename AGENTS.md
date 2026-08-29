@@ -96,3 +96,31 @@ This checkout is the user-maintained fork of CLIProxyAPI.
 4. Review the diff and workflow results, then merge into the user fork's `main` only after validation.
 5. Rebase remaining unshared feature branches onto the updated `main`.
 6. Create a dated `release/*` branch or tag only after the integration behavior and rollback path are documented.
+
+## Compatibility Change Control
+
+Before any Claude compatibility experiment, analysis, source edit, or report, read:
+
+`C:\Users\Administrator\gpt-5.6-instruct\artifacts\CPA-ClaudeCode-FIRST-READ-20260825\MODIFIED_FILE.md`
+
+Use `docs/CPA-COMPATIBILITY-CHANGE-CONTROL.md` as the single change-control index. The report hierarchy is:
+
+1. `FIRST-READ`: current verified factual baseline and evidence boundaries. If new verified evidence conflicts with it, update `FIRST-READ` first.
+2. `STRICT-MATRIX`: machine-readable signal inventory, classification, and required next evidence.
+3. `FULL-FINGERPRINT-REANALYSIS`: cross-axis interpretation and attribution limits.
+4. `DETAILED-EXPLANATION`: human-readable explanation of the current state.
+5. B-gap, startup-graph, raw-evidence, rerun, and other reports: scoped evidence appendices; they cannot silently override the first two levels.
+
+Every source change requires a change card in `docs/change-cards/` before implementation. A card must name exactly one signal or one explicitly scoped group of signals, its current classification, evidence paths, hypothesis, allowed files, prohibited changes, expected behavior, CI validation, and rollback command. A change without a card is out of process.
+
+The pre-edit gate is mandatory:
+
+- Confirm the branch is a `feat/*` branch and the worktree is understood.
+- Record the exact Signal ID from `STRICT-MATRIX.json` and its current classification.
+- Record host, egress, account, version, workload, and other confounders before interpreting a delta.
+- State what is being changed and what must remain untouched.
+- Define a same-scenario test and a falsifying result; do not treat a matching UA, JA3, header value, or one successful request as strict equivalence.
+- Define the GitHub Actions workflow and artifact paths that will validate the change.
+- Define and test rollback on a separate copy before calling the change releasable.
+
+Do not start implementation when the card is missing, the signal is `UNTESTED` without a measurement plan, or the proposed edit hard-codes caller-generated fields such as model, Tools, system prompt, paths, beta values, CCH, device IDs, session IDs, request IDs, socket counts, or TLS resumption counts.
