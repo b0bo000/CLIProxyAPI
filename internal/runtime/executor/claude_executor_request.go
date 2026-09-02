@@ -672,6 +672,14 @@ func applyClaudeHeadersWithNativeProfile(
 	helperProfile bool,
 	sessionIDs ...string,
 ) error {
+	softwareProfile := helps.ResolvedClaudeSoftwareProfile{Confirmed: confirmedClaudeCode}
+	if confirmedClaudeCode && helps.ClaudeDeviceProfileStabilizationEnabled(cfg) {
+		deviceProfile, errDeviceProfile := helps.ResolveClaudeDeviceProfileRequired(r.Context(), auth, apiKey, incomingHeaders, cfg)
+		if errDeviceProfile != nil {
+			return errDeviceProfile
+		}
+		softwareProfile.Device = deviceProfile
+	}
 	return applyClaudeHeadersWithResolvedProfile(
 		r,
 		auth,
@@ -681,7 +689,7 @@ func applyClaudeHeadersWithNativeProfile(
 		body,
 		cfg,
 		incomingHeaders,
-		helps.ResolvedClaudeSoftwareProfile{Confirmed: confirmedClaudeCode},
+		softwareProfile,
 		helperProfile,
 		sessionIDs...,
 	)
@@ -971,12 +979,10 @@ func applyClaudeHeadersWithResolvedProfile(
 	// Confirmed Claude Code requests may contribute their real software profile.
 	// Unconfirmed clients always receive the CLI baseline instead of being
 	// allowed to populate or reuse another client's software profile.
-	if stabilizeDeviceProfile {
-		if confirmedClaudeCode || softwareProfile.Provenance == helps.ClaudeSoftwareProfileConfiguredCLI {
-			helps.ApplyClaudeDeviceProfileHeaders(r, deviceProfile)
-		} else {
-			helps.ApplyClaudeDefaultDeviceProfileHeaders(r, cfg)
-		}
+	if (confirmedClaudeCode || softwareProfile.Provenance == helps.ClaudeSoftwareProfileConfiguredCLI) && deviceProfile.UserAgent != "" {
+		helps.ApplyClaudeDeviceProfileHeaders(r, deviceProfile)
+	} else if stabilizeDeviceProfile {
+		helps.ApplyClaudeDefaultDeviceProfileHeaders(r, cfg)
 	} else {
 		helps.ApplyClaudeLegacyDeviceHeaders(r, incomingHeaders, cfg, confirmedClaudeCode)
 	}
@@ -994,6 +1000,13 @@ func applyClaudeHeadersWithResolvedProfile(
 	if isAnthropicBase {
 		r.Header.Set("Anthropic-Beta", baseBetas)
 		applyTransportNegotiation()
+		// Once a request has a resolved software authority, credential-level
+		// header overrides must not split the UA/Stainless tuple from the body
+		// entrypoint. Unknown caller-owned requests retain the existing escape
+		// hatch; confirmed/configured profiles are reapplied as one unit.
+		if (confirmedClaudeCode || softwareProfile.Provenance == helps.ClaudeSoftwareProfileConfiguredCLI) && deviceProfile.UserAgent != "" {
+			helps.ApplyClaudeDeviceProfileHeaders(r, deviceProfile)
+		}
 	} else if stream {
 		// Elsewhere only streaming is protected, so an Accept override cannot
 		// silently disable event negotiation.

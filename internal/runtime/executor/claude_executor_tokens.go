@@ -219,6 +219,9 @@ func (e *ClaudeExecutor) countTokensUpstream(ctx context.Context, auth *cliproxy
 	// Runs on the finished body: payload rules can rewrite model and messages
 	// long after translation, so an earlier check would not describe the request
 	// that is about to be sent.
+	if errIdentity := helps.ValidateClaudeBillingSoftwareIdentity(body, softwareProfile, e.cfg); errIdentity != nil {
+		return cliproxyexecutor.Response{}, errIdentity
+	}
 	if errMidSystem := validateClaudeMidSystemMessageModel(body, confirmedClaudeCode, directAnthropic); errMidSystem != nil {
 		return cliproxyexecutor.Response{}, errMidSystem
 	}

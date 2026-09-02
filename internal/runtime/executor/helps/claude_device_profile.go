@@ -597,9 +597,6 @@ func ClaudeDeviceProfileVersion(profile ClaudeDeviceProfile, cfg *config.Config)
 	if version, ok := parseClaudeCLIVersion(profile.UserAgent); ok {
 		return strconv.Itoa(version.major) + "." + strconv.Itoa(version.minor) + "." + strconv.Itoa(version.patch)
 	}
-	if profile.UserAgent != "" {
-		return "2.1.220"
-	}
 	if cfg != nil {
 		baseline := defaultClaudeDeviceProfile(cfg)
 		if version, ok := parseClaudeCLIVersion(baseline.UserAgent); ok {
