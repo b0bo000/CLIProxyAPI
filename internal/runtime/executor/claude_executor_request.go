@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/andybalholm/brotli"
 	"github.com/google/uuid"
@@ -379,6 +380,168 @@ func extractAndRemoveBetas(body []byte) ([]string, []byte) {
 	}
 	body, _ = sjson.DeleteBytes(body, "betas")
 	return betas, body
+}
+
+const claudeBillingHeaderPrefix = "x-anthropic-billing-header:"
+
+// insertClaudePrevRequestBilling adds the previous successful upstream request ID
+// to an existing Claude billing text block. It deliberately does not synthesize a
+// billing block: the caller's native shape remains authoritative when no billing
+// block is present. The caller-owned cc_prev_req field is never rewritten.
+//
+// The field is placed after cch when one is already present, matching the observed
+// Claude Code order. If CCH has not been installed yet, placing it after
+// cc_entrypoint lets the later CCH placeholder pass produce the same order.
+func insertClaudePrevRequestBilling(body []byte, previousRequestID string) ([]byte, error) {
+	if previousRequestID == "" {
+		return body, nil
+	}
+	if errID := validateClaudePrevRequestID(previousRequestID); errID != nil {
+		return nil, errID
+	}
+	if !gjson.ValidBytes(body) {
+		return nil, fmt.Errorf("insert Claude cc_prev_req: malformed JSON body")
+	}
+
+	type billingCandidate struct {
+		path string
+		text string
+	}
+	candidates := make([]billingCandidate, 0, 1)
+	system := gjson.GetBytes(body, "system")
+	switch {
+	case system.Type == gjson.String:
+		if strings.HasPrefix(strings.TrimSpace(system.String()), claudeBillingHeaderPrefix) {
+			candidates = append(candidates, billingCandidate{path: "system", text: system.String()})
+		}
+	case system.IsArray():
+		for index, block := range system.Array() {
+			text := block.Get("text")
+			if text.Type != gjson.String || !strings.HasPrefix(strings.TrimSpace(text.String()), claudeBillingHeaderPrefix) {
+				continue
+			}
+			candidates = append(candidates, billingCandidate{
+				path: fmt.Sprintf("system.%d.text", index),
+				text: text.String(),
+			})
+		}
+	}
+	if len(candidates) == 0 {
+		return body, nil
+	}
+	if len(candidates) > 1 {
+		return nil, fmt.Errorf("insert Claude cc_prev_req: multiple billing blocks")
+	}
+
+	updatedText, changed, errInsert := insertClaudePrevRequestBillingText(candidates[0].text, previousRequestID)
+	if errInsert != nil {
+		return nil, errInsert
+	}
+	if !changed {
+		return body, nil
+	}
+	updated, errSet := sjson.SetBytes(body, candidates[0].path, updatedText)
+	if errSet != nil {
+		return nil, fmt.Errorf("insert Claude cc_prev_req at %s: %w", candidates[0].path, errSet)
+	}
+	return updated, nil
+}
+
+func validateClaudePrevRequestID(requestID string) error {
+	if requestID == "" {
+		return fmt.Errorf("insert Claude cc_prev_req: empty request ID")
+	}
+	if strings.TrimSpace(requestID) != requestID || strings.ContainsAny(requestID, ";=\r\n") {
+		return fmt.Errorf("insert Claude cc_prev_req: invalid request ID")
+	}
+	for _, r := range requestID {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return fmt.Errorf("insert Claude cc_prev_req: invalid request ID")
+		}
+	}
+	return nil
+}
+
+func insertClaudePrevRequestBillingText(text, previousRequestID string) (updated string, changed bool, err error) {
+	trimmed := strings.TrimSpace(text)
+	if !strings.HasPrefix(trimmed, claudeBillingHeaderPrefix) {
+		return text, false, nil
+	}
+
+	// Work on the trimmed view but splice into the original string so caller
+	// whitespace remains byte-for-byte intact around the edited billing value.
+	trimmedStart := strings.Index(text, trimmed)
+	if trimmedStart < 0 {
+		return text, false, fmt.Errorf("insert Claude cc_prev_req: invalid billing text")
+	}
+	trimmedEnd := trimmedStart + len(trimmed)
+	prefix := trimmed[:len(claudeBillingHeaderPrefix)]
+	remainder := trimmed[len(prefix):]
+
+	entrypointInsertAt := -1
+	cchInsertAt := -1
+	foundPrevious := false
+	seenKeys := make(map[string]bool)
+	cursor := len(prefix)
+	for _, segment := range strings.Split(remainder, ";") {
+		segmentStart := cursor
+		segmentEnd := segmentStart + len(segment)
+		cursor = segmentEnd + 1
+		part := strings.TrimSpace(segment)
+		if part == "" {
+			continue
+		}
+		key, value, hasEquals := strings.Cut(part, "=")
+		if !hasEquals || strings.TrimSpace(key) == "" {
+			return text, false, fmt.Errorf("insert Claude cc_prev_req: malformed billing segment %q", part)
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if seenKeys[key] {
+			if key == "cc_prev_req" {
+				return text, false, fmt.Errorf("insert Claude cc_prev_req: duplicate cc_prev_req")
+			}
+		}
+		seenKeys[key] = true
+		hasSemicolon := segmentEnd < len(trimmed) && trimmed[segmentEnd] == ';'
+		insertAt := segmentEnd
+		if hasSemicolon {
+			insertAt++
+		}
+		switch key {
+		case "cc_entrypoint":
+			if value == "" {
+				return text, false, fmt.Errorf("insert Claude cc_prev_req: empty cc_entrypoint")
+			}
+			entrypointInsertAt = insertAt
+		case "cch":
+			if value == "" {
+				return text, false, fmt.Errorf("insert Claude cc_prev_req: empty cch")
+			}
+			cchInsertAt = insertAt
+		case "cc_prev_req":
+			if value == "" {
+				return text, false, fmt.Errorf("insert Claude cc_prev_req: empty cc_prev_req")
+			}
+			if errID := validateClaudePrevRequestID(value); errID != nil {
+				return text, false, errID
+			}
+			foundPrevious = true
+		}
+	}
+	if foundPrevious {
+		return text, false, nil
+	}
+	if entrypointInsertAt < 0 {
+		return text, false, fmt.Errorf("insert Claude cc_prev_req: billing block has no cc_entrypoint")
+	}
+	insertAt := entrypointInsertAt
+	if cchInsertAt >= 0 {
+		insertAt = cchInsertAt
+	}
+	field := " cc_prev_req=" + previousRequestID + ";"
+	updatedTrimmed := trimmed[:insertAt] + field + trimmed[insertAt:]
+	return text[:trimmedStart] + updatedTrimmed + text[trimmedEnd:], true, nil
 }
 
 // disableThinkingIfToolChoiceForced checks if tool_choice forces tool use and disables thinking.
