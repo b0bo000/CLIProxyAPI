@@ -250,6 +250,28 @@ func TestValidateClaudeBillingSoftwareIdentityRejectsLaterBillingBlock(t *testin
 	assertClaudeSoftwareProfileRequestError(t, errValidate)
 }
 
+func TestValidateClaudeBillingSoftwareIdentityHandlesStringAndWhitespace(t *testing.T) {
+	profile := ResolvedClaudeSoftwareProfile{
+		Device:     defaultClaudeDeviceProfile(nil),
+		Entrypoint: "cli",
+		Provenance: ClaudeSoftwareProfileConfiguredCLI,
+	}
+	matching := "  x-anthropic-billing-header: cc_version=2.1.220.test; cc_entrypoint=cli; cch=abcde;  "
+	if errValidate := ValidateClaudeBillingSoftwareIdentity([]byte(`{"system":`+quoteJSON(matching)+`}`), profile, nil); errValidate != nil {
+		t.Fatalf("string billing validation error = %v", errValidate)
+	}
+	conflicting := " x-anthropic-billing-header: cc_version=2.1.220.test; cc_entrypoint=sdk-cli; cch=abcde;"
+	errValidate := ValidateClaudeBillingSoftwareIdentity([]byte(`{"system":`+quoteJSON(conflicting)+`}`), profile, nil)
+	if errValidate == nil || !strings.Contains(errValidate.Error(), "conflicts with resolved entrypoint") {
+		t.Fatalf("string billing conflict error = %v", errValidate)
+	}
+	assertClaudeSoftwareProfileRequestError(t, errValidate)
+}
+
+func quoteJSON(value string) string {
+	return `"` + strings.ReplaceAll(strings.ReplaceAll(value, `\`, `\\`), `"`, `\"`) + `"`
+}
+
 func assertClaudeSoftwareProfileRequestError(t *testing.T, err error) {
 	t.Helper()
 	var status interface{ StatusCode() int }

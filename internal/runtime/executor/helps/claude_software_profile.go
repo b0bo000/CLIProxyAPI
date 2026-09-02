@@ -144,28 +144,46 @@ func ResolveClaudeSoftwareProfile(
 
 func validateClaudeBillingSoftwareIdentity(payload []byte, profile ResolvedClaudeSoftwareProfile, cfg *config.Config) error {
 	system := gjson.GetBytes(payload, "system")
+	if system.Type == gjson.String {
+		billing := strings.TrimSpace(system.String())
+		if !strings.HasPrefix(billing, "x-anthropic-billing-header:") {
+			return nil
+		}
+		return validateClaudeBillingSoftwareIdentityText(billing, 0, profile, cfg)
+	}
 	if !system.IsArray() {
 		return nil
 	}
 	for index, block := range system.Array() {
 		billing := block.Get("text")
-		if billing.Type != gjson.String || !strings.HasPrefix(billing.String(), "x-anthropic-billing-header:") {
+		if billing.Type != gjson.String {
 			continue
 		}
-		if index != 0 {
-			return fmt.Errorf("Claude billing header must be the first system block, found at index %d", index)
+		billingText := strings.TrimSpace(billing.String())
+		if !strings.HasPrefix(billingText, "x-anthropic-billing-header:") {
+			continue
 		}
-		version, entrypoint, errParse := parseClaudeBillingSoftwareIdentity(billing.String())
-		if errParse != nil {
-			return errParse
+		if errValidate := validateClaudeBillingSoftwareIdentityText(billingText, index, profile, cfg); errValidate != nil {
+			return errValidate
 		}
-		expectedVersion := ClaudeDeviceProfileVersion(profile.Device, cfg)
-		if version != expectedVersion && !strings.HasPrefix(version, expectedVersion+".") {
-			return fmt.Errorf("Claude billing cc_version %q conflicts with resolved software version %q", version, expectedVersion)
-		}
-		if entrypoint != profile.Entrypoint {
-			return fmt.Errorf("Claude billing cc_entrypoint %q conflicts with resolved entrypoint %q", entrypoint, profile.Entrypoint)
-		}
+	}
+	return nil
+}
+
+func validateClaudeBillingSoftwareIdentityText(billing string, index int, profile ResolvedClaudeSoftwareProfile, cfg *config.Config) error {
+	if index != 0 {
+		return fmt.Errorf("Claude billing header must be the first system block, found at index %d", index)
+	}
+	version, entrypoint, errParse := parseClaudeBillingSoftwareIdentity(billing)
+	if errParse != nil {
+		return errParse
+	}
+	expectedVersion := ClaudeDeviceProfileVersion(profile.Device, cfg)
+	if version != expectedVersion && !strings.HasPrefix(version, expectedVersion+".") {
+		return fmt.Errorf("Claude billing cc_version %q conflicts with resolved software version %q", version, expectedVersion)
+	}
+	if entrypoint != profile.Entrypoint {
+		return fmt.Errorf("Claude billing cc_entrypoint %q conflicts with resolved entrypoint %q", entrypoint, profile.Entrypoint)
 	}
 	return nil
 }
