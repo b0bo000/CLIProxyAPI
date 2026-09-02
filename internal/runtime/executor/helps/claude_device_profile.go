@@ -587,8 +587,24 @@ func ApplyClaudeDeviceProfileHeaders(r *http.Request, profile ClaudeDeviceProfil
 // current baseline device profile. It extracts the version from the User-Agent.
 func DefaultClaudeVersion(cfg *config.Config) string {
 	profile := defaultClaudeDeviceProfile(cfg)
+	return ClaudeDeviceProfileVersion(profile, cfg)
+}
+
+// ClaudeDeviceProfileVersion returns the version encoded by a resolved device
+// profile. The configured baseline remains the fallback when the profile does
+// not contain a parseable Claude CLI User-Agent.
+func ClaudeDeviceProfileVersion(profile ClaudeDeviceProfile, cfg *config.Config) string {
 	if version, ok := parseClaudeCLIVersion(profile.UserAgent); ok {
 		return strconv.Itoa(version.major) + "." + strconv.Itoa(version.minor) + "." + strconv.Itoa(version.patch)
+	}
+	if profile.UserAgent != "" {
+		return "2.1.220"
+	}
+	if cfg != nil {
+		baseline := defaultClaudeDeviceProfile(cfg)
+		if version, ok := parseClaudeCLIVersion(baseline.UserAgent); ok {
+			return strconv.Itoa(version.major) + "." + strconv.Itoa(version.minor) + "." + strconv.Itoa(version.patch)
+		}
 	}
 	return "2.1.220"
 }

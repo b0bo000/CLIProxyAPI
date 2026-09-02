@@ -16,8 +16,8 @@ type ClaudeSoftwareProfileProvenance string
 
 const (
 	ClaudeSoftwareProfileDetected      ClaudeSoftwareProfileProvenance = "detected"
-	ClaudeSoftwareProfileConfiguredCLI  ClaudeSoftwareProfileProvenance = "configured-cli"
-	ClaudeSoftwareProfileUnknown        ClaudeSoftwareProfileProvenance = "unknown"
+	ClaudeSoftwareProfileConfiguredCLI ClaudeSoftwareProfileProvenance = "configured-cli"
+	ClaudeSoftwareProfileUnknown       ClaudeSoftwareProfileProvenance = "unknown"
 )
 
 // ResolvedClaudeSoftwareProfile joins the persistent device tuple with the
@@ -30,6 +30,14 @@ type ResolvedClaudeSoftwareProfile struct {
 	AgentSDKVersion string
 	Confirmed       bool
 	Provenance      ClaudeSoftwareProfileProvenance
+	helperProfile   bool
+}
+
+// IsHelperProfile reports whether the detector matched one of the measured
+// native Haiku helper request shapes. It stays private to the resolver's
+// authority: callers cannot assert helper status by setting an HTTP field.
+func (p ResolvedClaudeSoftwareProfile) IsHelperProfile() bool {
+	return p.helperProfile
 }
 
 // ResolveClaudeSoftwareProfile resolves one request's software identity. The
@@ -52,9 +60,10 @@ func ResolveClaudeSoftwareProfile(
 ) (ResolvedClaudeSoftwareProfile, error) {
 	detection := DetectClaudeCodeRequest(headers, payload, countTokens, cfg)
 	resolved := ResolvedClaudeSoftwareProfile{
-		Device:     defaultClaudeDeviceProfile(cfg),
-		Confirmed:  detection.Confirmed,
-		Provenance: ClaudeSoftwareProfileUnknown,
+		Device:        defaultClaudeDeviceProfile(cfg),
+		Confirmed:     detection.Confirmed,
+		Provenance:    ClaudeSoftwareProfileUnknown,
+		helperProfile: detection.HelperProfile,
 	}
 
 	if detection.Confirmed {
@@ -79,6 +88,13 @@ func ResolveClaudeSoftwareProfile(
 		resolved.Entrypoint = "cli"
 		resolved.Subclient = claudeCodeSubclientByEntrypoint[resolved.Entrypoint]
 		resolved.Provenance = ClaudeSoftwareProfileConfiguredCLI
+		if ClaudeDeviceProfileStabilizationEnabled(cfg) {
+			profile, errProfile := ResolveClaudeDeviceProfileRequired(ctx, auth, apiKey, nil, cfg)
+			if errProfile != nil {
+				return ResolvedClaudeSoftwareProfile{}, errProfile
+			}
+			resolved.Device = profile
+		}
 	}
 	return resolved, nil
 }

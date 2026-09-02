@@ -59,8 +59,13 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		originalPayloadSource = opts.OriginalRequest
 	}
 	originalPayload := originalPayloadSource
-	incomingHeaders, claudeCodeDetection := detectIncomingClaudeCodeRequest(ctx, opts.Headers, originalPayload, false, e.cfg)
-	confirmedClaudeCode := claudeCodeDetection.Confirmed
+	incomingHeaders := resolveIncomingClaudeHeaders(ctx, opts.Headers)
+	configuredCLI := fp.ProfileClaudeCodeCLI && !fp.AuthIsOAuthToken
+	softwareProfile, errSoftwareProfile := helps.ResolveClaudeSoftwareProfile(ctx, auth, apiKey, incomingHeaders, originalPayload, false, e.cfg, configuredCLI)
+	if errSoftwareProfile != nil {
+		return nil, errSoftwareProfile
+	}
+	confirmedClaudeCode := softwareProfile.Confirmed
 	claudeSessionID := ""
 	if fp.ProfileClaudeCodeCLI {
 		claudeSessionID = helps.ClaudeAgentSessionUUIDForRequest(incomingHeaders, originalPayload, req.Payload, confirmedClaudeCode, opts.Metadata, req.Metadata)
@@ -81,13 +86,13 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	// based on client type and configuration.
 	bodyBeforeCloaking := body
 	var cloaked bool
-	body, cloaked, err = applyCloaking(
+	body, cloaked, err = applyCloakingWithResolvedProfile(
 		ctx,
 		e.cfg,
 		auth,
 		body,
 		apiKey,
-		confirmedClaudeCode,
+		softwareProfile,
 		cchSigning,
 	)
 	if err != nil {
@@ -170,8 +175,8 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	}
 	cchBilling := ""
 	if cchSigning {
-		if !claudeCodeDetection.HelperProfile || claudeBodyNeedsBillingFallback(bodyForUpstream) {
-			cchBilling = claudeCCHFallbackBillingHeader(ctx, e.cfg, bodyForUpstream, claudeCodeDetection.Entrypoint)
+		if !softwareProfile.IsHelperProfile() || claudeBodyNeedsBillingFallback(bodyForUpstream) {
+			cchBilling = claudeCCHFallbackBillingHeaderWithProfile(ctx, e.cfg, bodyForUpstream, softwareProfile)
 		}
 		bodyForUpstream, err = finalizeAnthropicMessagesBodyCCH(bodyForUpstream, cchBilling)
 		if err != nil {
@@ -190,7 +195,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	if err != nil {
 		return nil, err
 	}
-	if errHeaders := applyClaudeHeadersWithNativeProfile(
+	if errHeaders := applyClaudeHeadersWithResolvedProfile(
 		httpReq,
 		auth,
 		apiKey,
@@ -199,8 +204,8 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		bodyForUpstream,
 		e.cfg,
 		incomingHeaders,
-		confirmedClaudeCode && !cloaked,
-		claudeCodeDetection.HelperProfile,
+		softwareProfile,
+		softwareProfile.IsHelperProfile(),
 		claudeSessionID,
 	); errHeaders != nil {
 		return nil, errHeaders

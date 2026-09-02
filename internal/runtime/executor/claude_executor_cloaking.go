@@ -191,9 +191,26 @@ func claudeBillingFingerprintMessageText(payload []byte) string {
 }
 
 func claudeCCHFallbackBillingHeader(ctx context.Context, cfg *config.Config, payload []byte, entrypoint string) string {
+	return claudeCCHFallbackBillingHeaderWithProfile(ctx, cfg, payload, helps.ResolvedClaudeSoftwareProfile{
+		Entrypoint: entrypoint,
+		Provenance: helps.ClaudeSoftwareProfileDetected,
+	})
+}
+
+func claudeCCHFallbackBillingHeaderWithProfile(ctx context.Context, cfg *config.Config, payload []byte, profile helps.ResolvedClaudeSoftwareProfile) string {
+	entrypoint := "cli"
+	if profile.Provenance != helps.ClaudeSoftwareProfileUnknown {
+		if resolvedEntrypoint := strings.TrimSpace(profile.Entrypoint); resolvedEntrypoint != "" {
+			entrypoint = resolvedEntrypoint
+		}
+	}
+	version := helps.DefaultClaudeVersion(cfg)
+	if profile.Provenance != helps.ClaudeSoftwareProfileUnknown && profile.Device.UserAgent != "" {
+		version = helps.ClaudeDeviceProfileVersion(profile.Device, cfg)
+	}
 	return generateBillingHeader(
 		true,
-		helps.DefaultClaudeVersion(cfg),
+		version,
 		claudeBillingFingerprintMessageText(payload),
 		entrypoint,
 		getWorkloadFromContext(ctx),
@@ -1012,6 +1029,21 @@ func applyCloaking(
 	confirmedClaudeCode bool,
 	cchSigning bool,
 ) ([]byte, bool, error) {
+	return applyCloakingWithResolvedProfile(ctx, cfg, auth, payload, apiKey, helps.ResolvedClaudeSoftwareProfile{
+		Confirmed: confirmedClaudeCode,
+	}, cchSigning)
+}
+
+func applyCloakingWithResolvedProfile(
+	ctx context.Context,
+	cfg *config.Config,
+	auth *cliproxyauth.Auth,
+	payload []byte,
+	apiKey string,
+	softwareProfile helps.ResolvedClaudeSoftwareProfile,
+	cchSigning bool,
+) ([]byte, bool, error) {
+	confirmedClaudeCode := softwareProfile.Confirmed
 	policy, settings := resolveClaudeWirePolicy(cfg, auth, apiKey, confirmedClaudeCode)
 	if !policy.Cloak {
 		return payload, false, nil
@@ -1025,8 +1057,17 @@ func applyCloaking(
 	}
 
 	billingVersion := helps.DefaultClaudeVersion(cfg)
+	billingEntrypoint := "cli"
+	if softwareProfile.Provenance != helps.ClaudeSoftwareProfileUnknown {
+		if entrypoint := strings.TrimSpace(softwareProfile.Entrypoint); entrypoint != "" {
+			billingEntrypoint = entrypoint
+		}
+		if softwareProfile.Device.UserAgent != "" {
+			billingVersion = helps.ClaudeDeviceProfileVersion(softwareProfile.Device, cfg)
+		}
+	}
 	workload := getWorkloadFromContext(ctx)
-	payload = checkSystemInstructionsWithSigningModeAt(payload, settings.strictMode, cchSigning, billingVersion, "cli", workload, claudeCodeCurrentTime(cfg, auth))
+	payload = checkSystemInstructionsWithSigningModeAt(payload, settings.strictMode, cchSigning, billingVersion, billingEntrypoint, workload, claudeCodeCurrentTime(cfg, auth))
 
 	// Claude-Code-CLI fingerprint identity (real OAuth or fingerprint-profile=claude-code-cli)
 	// is applied later through the shared ApplyClaudeCredentialMetadata path.

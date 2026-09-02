@@ -672,9 +672,38 @@ func applyClaudeHeadersWithNativeProfile(
 	helperProfile bool,
 	sessionIDs ...string,
 ) error {
+	return applyClaudeHeadersWithResolvedProfile(
+		r,
+		auth,
+		apiKey,
+		stream,
+		extraBetas,
+		body,
+		cfg,
+		incomingHeaders,
+		helps.ResolvedClaudeSoftwareProfile{Confirmed: confirmedClaudeCode},
+		helperProfile,
+		sessionIDs...,
+	)
+}
+
+func applyClaudeHeadersWithResolvedProfile(
+	r *http.Request,
+	auth *cliproxyauth.Auth,
+	apiKey string,
+	stream bool,
+	extraBetas []string,
+	body []byte,
+	cfg *config.Config,
+	incomingHeaders http.Header,
+	softwareProfile helps.ResolvedClaudeSoftwareProfile,
+	helperProfile bool,
+	sessionIDs ...string,
+) error {
 	if r == nil {
 		return nil
 	}
+	confirmedClaudeCode := softwareProfile.Confirmed
 	hdrDefault := func(cfgVal, fallback string) string {
 		if cfgVal != "" {
 			return cfgVal
@@ -718,8 +747,8 @@ func applyClaudeHeadersWithNativeProfile(
 		}
 	}
 	stabilizeDeviceProfile := helps.ClaudeDeviceProfileStabilizationEnabled(cfg)
-	var deviceProfile helps.ClaudeDeviceProfile
-	if stabilizeDeviceProfile && confirmedClaudeCode {
+	deviceProfile := softwareProfile.Device
+	if stabilizeDeviceProfile && (confirmedClaudeCode || softwareProfile.Provenance == helps.ClaudeSoftwareProfileConfiguredCLI) && deviceProfile.UserAgent == "" {
 		var errDeviceProfile error
 		deviceProfile, errDeviceProfile = helps.ResolveClaudeDeviceProfileRequired(r.Context(), auth, apiKey, incomingHeaders, cfg)
 		if errDeviceProfile != nil {
@@ -943,7 +972,7 @@ func applyClaudeHeadersWithNativeProfile(
 	// Unconfirmed clients always receive the CLI baseline instead of being
 	// allowed to populate or reuse another client's software profile.
 	if stabilizeDeviceProfile {
-		if confirmedClaudeCode {
+		if confirmedClaudeCode || softwareProfile.Provenance == helps.ClaudeSoftwareProfileConfiguredCLI {
 			helps.ApplyClaudeDeviceProfileHeaders(r, deviceProfile)
 		} else {
 			helps.ApplyClaudeDefaultDeviceProfileHeaders(r, cfg)
