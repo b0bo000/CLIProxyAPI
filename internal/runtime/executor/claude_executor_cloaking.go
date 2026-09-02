@@ -27,10 +27,20 @@ import (
 func resolveIncomingClaudeHeaders(ctx context.Context, incoming http.Header) http.Header {
 	resolved := make(http.Header)
 	if ginCtx, ok := ctx.Value("gin").(*gin.Context); ok && ginCtx != nil && ginCtx.Request != nil {
-		resolved = ginCtx.Request.Header.Clone()
+		for key, values := range ginCtx.Request.Header {
+			canonical := http.CanonicalHeaderKey(key)
+			resolved[canonical] = append(resolved[canonical], values...)
+		}
 	}
+	incomingCanonical := make(http.Header)
 	for key, values := range incoming {
-		resolved[key] = append([]string(nil), values...)
+		canonical := http.CanonicalHeaderKey(key)
+		incomingCanonical[canonical] = append(incomingCanonical[canonical], values...)
+	}
+	for key, values := range incomingCanonical {
+		// Request options override the Gin envelope, matching the pre-profile
+		// behavior while still normalizing hand-built non-canonical maps.
+		resolved[key] = values
 	}
 	return resolved
 }

@@ -253,7 +253,7 @@ func extractClaudeDeviceProfile(headers http.Header, cfg *config.Config) (Claude
 		return ClaudeDeviceProfile{}, false
 	}
 
-	userAgent := strings.TrimSpace(headers.Get("User-Agent"))
+	userAgent := headerValueCaseInsensitive(headers, "User-Agent")
 	version, ok := parseClaudeCLIVersion(userAgent)
 	if !ok || !claudeCodeNativeUserAgentPattern.MatchString(userAgent) {
 		return ClaudeDeviceProfile{}, false
@@ -284,7 +284,7 @@ func firstNonEmptyHeader(headers http.Header, name, fallback string) string {
 	if headers == nil {
 		return fallback
 	}
-	if value := strings.TrimSpace(headers.Get(name)); value != "" {
+	if value := headerValueCaseInsensitive(headers, name); value != "" {
 		return value
 	}
 	return fallback

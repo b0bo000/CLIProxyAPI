@@ -672,6 +672,9 @@ func applyClaudeHeadersWithNativeProfile(
 	helperProfile bool,
 	sessionIDs ...string,
 ) error {
+	if r == nil {
+		return nil
+	}
 	softwareProfile := helps.ResolvedClaudeSoftwareProfile{Confirmed: confirmedClaudeCode}
 	if confirmedClaudeCode && helps.ClaudeDeviceProfileStabilizationEnabled(cfg) {
 		deviceProfile, errDeviceProfile := helps.ResolveClaudeDeviceProfileRequired(r.Context(), auth, apiKey, incomingHeaders, cfg)
@@ -1006,6 +1009,9 @@ func applyClaudeHeadersWithResolvedProfile(
 		// hatch; confirmed/configured profiles are reapplied as one unit.
 		if (confirmedClaudeCode || softwareProfile.Provenance == helps.ClaudeSoftwareProfileConfiguredCLI) && deviceProfile.UserAgent != "" {
 			helps.ApplyClaudeDeviceProfileHeaders(r, deviceProfile)
+			r.Header.Set("X-App", "cli")
+			r.Header.Set("X-Stainless-Lang", "js")
+			r.Header.Set("X-Stainless-Runtime", "node")
 		}
 	} else if stream {
 		// Elsewhere only streaming is protected, so an Accept override cannot

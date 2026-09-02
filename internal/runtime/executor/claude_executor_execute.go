@@ -57,7 +57,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	}
 	originalPayload := originalPayloadSource
 	incomingHeaders := resolveIncomingClaudeHeaders(ctx, opts.Headers)
-	configuredCLI := fp.ProfileClaudeCodeCLI && !fp.AuthIsOAuthToken
+	configuredCLI := fp.ProfileClaudeCodeCLI
 	softwareProfile, errSoftwareProfile := helps.ResolveClaudeSoftwareProfile(ctx, auth, apiKey, incomingHeaders, originalPayload, false, e.cfg, configuredCLI)
 	if errSoftwareProfile != nil {
 		return resp, errSoftwareProfile
@@ -182,9 +182,6 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		}
 	}
 	cchBilling := ""
-	if errIdentity := helps.ValidateClaudeBillingSoftwareIdentity(bodyForUpstream, softwareProfile, e.cfg); errIdentity != nil {
-		return resp, errIdentity
-	}
 	if cchSigning {
 		if !softwareProfile.IsHelperProfile() || claudeBodyNeedsBillingFallback(bodyForUpstream) {
 			cchBilling = claudeCCHFallbackBillingHeaderWithProfile(ctx, e.cfg, bodyForUpstream, softwareProfile)
@@ -195,6 +192,9 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		}
 	}
 	bodyForUpstream = stripDefaultKimiClaudeCodeAttribution(auth, url, fp.ProfileClaudeCodeCLI, bodyForUpstream)
+	if errIdentity := helps.ValidateClaudeBillingSoftwareIdentity(bodyForUpstream, softwareProfile, e.cfg); errIdentity != nil {
+		return resp, errIdentity
+	}
 	// Runs on the finished body: payload rules can rewrite model and messages
 	// long after translation, so an earlier check would not describe the request
 	// that is about to be sent.

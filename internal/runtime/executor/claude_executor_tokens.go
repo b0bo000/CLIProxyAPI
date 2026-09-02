@@ -136,7 +136,7 @@ func (e *ClaudeExecutor) countTokensUpstream(ctx context.Context, auth *cliproxy
 		originalPayload = opts.OriginalRequest
 	}
 	incomingHeaders := resolveIncomingClaudeHeaders(ctx, opts.Headers)
-	configuredCLI := fp.ProfileClaudeCodeCLI && !fp.AuthIsOAuthToken
+	configuredCLI := fp.ProfileClaudeCodeCLI
 	softwareProfile, errSoftwareProfile := helps.ResolveClaudeSoftwareProfile(ctx, auth, apiKey, incomingHeaders, originalPayload, true, e.cfg, configuredCLI)
 	if errSoftwareProfile != nil {
 		return cliproxyexecutor.Response{}, errSoftwareProfile

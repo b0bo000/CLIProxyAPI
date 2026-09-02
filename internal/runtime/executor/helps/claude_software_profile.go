@@ -35,6 +35,39 @@ type ResolvedClaudeSoftwareProfile struct {
 	helperProfile   bool
 }
 
+type claudeSoftwareProfileRequestError struct {
+	cause error
+}
+
+func (e *claudeSoftwareProfileRequestError) Error() string {
+	if e == nil || e.cause == nil {
+		return ""
+	}
+	return e.cause.Error()
+}
+
+func (e *claudeSoftwareProfileRequestError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
+func (e *claudeSoftwareProfileRequestError) StatusCode() int {
+	if e == nil {
+		return 0
+	}
+	return http.StatusBadRequest
+}
+
+func (e *claudeSoftwareProfileRequestError) IsRequestScoped() bool {
+	return e != nil
+}
+
+func newClaudeSoftwareProfileRequestErrorf(format string, args ...any) error {
+	return &claudeSoftwareProfileRequestError{cause: fmt.Errorf(format, args...)}
+}
+
 // IsHelperProfile reports whether the detector matched one of the measured
 // native Haiku helper request shapes. It stays private to the resolver's
 // authority: callers cannot assert helper status by setting an HTTP field.
@@ -82,51 +115,72 @@ func ResolveClaudeSoftwareProfile(
 				return ResolvedClaudeSoftwareProfile{}, errProfile
 			}
 			resolved.Device = profile
+		} else if resolved.Device.UserAgent != "" {
+			// Preserve the legacy confirmed-client rule when stabilization is
+			// disabled: the caller may provide the native entrypoint/platform, but
+			// package and runtime remain tied to the configured baseline.
+			baseline := defaultClaudeDeviceProfile(cfg)
+			resolved.Device.PackageVersion = baseline.PackageVersion
+			resolved.Device.RuntimeVersion = baseline.RuntimeVersion
 		}
 		if deviceEntrypoint, _ := parseClaudeCodeUserAgentDetails(resolved.Device.UserAgent); deviceEntrypoint != "" && deviceEntrypoint != resolved.Entrypoint {
-			return ResolvedClaudeSoftwareProfile{}, fmt.Errorf("resolved device entrypoint %q conflicts with detected entrypoint %q", deviceEntrypoint, resolved.Entrypoint)
+			return ResolvedClaudeSoftwareProfile{}, newClaudeSoftwareProfileRequestErrorf("resolved device entrypoint %q conflicts with detected entrypoint %q", deviceEntrypoint, resolved.Entrypoint)
 		}
 		return resolved, nil
 	}
 
 	if configuredCLI {
-		resolved.Entrypoint = "cli"
-		if entrypoint, _ := parseClaudeCodeUserAgentDetails(resolved.Device.UserAgent); nativeClaudeEntrypoints[entrypoint] {
-			resolved.Entrypoint = entrypoint
+		entrypoint, agentSDKVersion := parseClaudeCodeUserAgentDetails(resolved.Device.UserAgent)
+		if _, ok := parseClaudeCLIVersion(resolved.Device.UserAgent); !ok || !claudeCodeNativeUserAgentPattern.MatchString(resolved.Device.UserAgent) || !nativeClaudeEntrypoints[entrypoint] {
+			return ResolvedClaudeSoftwareProfile{}, fmt.Errorf("configured Claude CLI profile has incompatible User-Agent %q", resolved.Device.UserAgent)
 		}
+		resolved.Entrypoint = entrypoint
 		resolved.Subclient = claudeCodeSubclientByEntrypoint[resolved.Entrypoint]
+		resolved.AgentSDKVersion = agentSDKVersion
 		resolved.Provenance = ClaudeSoftwareProfileConfiguredCLI
 	}
 	return resolved, nil
 }
 
 func validateClaudeBillingSoftwareIdentity(payload []byte, profile ResolvedClaudeSoftwareProfile, cfg *config.Config) error {
-	billing := gjson.GetBytes(payload, "system.0.text")
-	if billing.Type != gjson.String || !strings.HasPrefix(billing.String(), "x-anthropic-billing-header:") {
+	system := gjson.GetBytes(payload, "system")
+	if !system.IsArray() {
 		return nil
 	}
-	version, entrypoint, errParse := parseClaudeBillingSoftwareIdentity(billing.String())
-	if errParse != nil {
-		return errParse
-	}
-	expectedVersion := ClaudeDeviceProfileVersion(profile.Device, cfg)
-	if version != expectedVersion && !strings.HasPrefix(version, expectedVersion+".") {
-		return fmt.Errorf("Claude billing cc_version %q conflicts with resolved software version %q", version, expectedVersion)
-	}
-	if entrypoint != profile.Entrypoint {
-		return fmt.Errorf("Claude billing cc_entrypoint %q conflicts with resolved entrypoint %q", entrypoint, profile.Entrypoint)
+	for index, block := range system.Array() {
+		billing := block.Get("text")
+		if billing.Type != gjson.String || !strings.HasPrefix(billing.String(), "x-anthropic-billing-header:") {
+			continue
+		}
+		if index != 0 {
+			return fmt.Errorf("Claude billing header must be the first system block, found at index %d", index)
+		}
+		version, entrypoint, errParse := parseClaudeBillingSoftwareIdentity(billing.String())
+		if errParse != nil {
+			return errParse
+		}
+		expectedVersion := ClaudeDeviceProfileVersion(profile.Device, cfg)
+		if version != expectedVersion && !strings.HasPrefix(version, expectedVersion+".") {
+			return fmt.Errorf("Claude billing cc_version %q conflicts with resolved software version %q", version, expectedVersion)
+		}
+		if entrypoint != profile.Entrypoint {
+			return fmt.Errorf("Claude billing cc_entrypoint %q conflicts with resolved entrypoint %q", entrypoint, profile.Entrypoint)
+		}
 	}
 	return nil
 }
 
 // ValidateClaudeBillingSoftwareIdentity checks the finished upstream body
 // against the resolved software authority. Callers should run it after all
-// translation and payload rules, immediately before CCH finalization.
+// translation, payload rules, CCH finalization and attribution cleanup.
 func ValidateClaudeBillingSoftwareIdentity(payload []byte, profile ResolvedClaudeSoftwareProfile, cfg *config.Config) error {
 	if profile.Provenance == ClaudeSoftwareProfileUnknown {
 		return nil
 	}
-	return validateClaudeBillingSoftwareIdentity(payload, profile, cfg)
+	if errValidate := validateClaudeBillingSoftwareIdentity(payload, profile, cfg); errValidate != nil {
+		return &claudeSoftwareProfileRequestError{cause: errValidate}
+	}
+	return nil
 }
 
 func parseClaudeBillingSoftwareIdentity(billing string) (version, entrypoint string, err error) {

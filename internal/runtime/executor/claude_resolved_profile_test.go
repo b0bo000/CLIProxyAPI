@@ -41,9 +41,12 @@ func TestResolvedClaudeSoftwareProfileDrivesHeaderAndBillingAuthorities(t *testi
 	if errHeaders := applyClaudeHeadersWithResolvedProfile(
 		req,
 		&cliproxyauth.Auth{Attributes: map[string]string{
-			"header:User-Agent":       "evil-client/9.9",
-			"header:X-Stainless-Os":   "Linux",
-			"header:X-Stainless-Arch": "arm64",
+			"header:User-Agent":          "evil-client/9.9",
+			"header:X-App":               "evil-app",
+			"header:X-Stainless-Lang":    "python",
+			"header:X-Stainless-Runtime": "python",
+			"header:X-Stainless-Os":      "Linux",
+			"header:X-Stainless-Arch":    "arm64",
 		}},
 		"key-resolved-profile",
 		false,
@@ -68,6 +71,15 @@ func TestResolvedClaudeSoftwareProfileDrivesHeaderAndBillingAuthorities(t *testi
 	}
 	if got := req.Header.Get("X-Stainless-Arch"); got != profile.Device.Arch {
 		t.Fatalf("arch = %q, want %q", got, profile.Device.Arch)
+	}
+	if got := req.Header.Get("X-App"); got != "cli" {
+		t.Fatalf("X-App = %q, want cli", got)
+	}
+	if got := req.Header.Get("X-Stainless-Lang"); got != "js" {
+		t.Fatalf("X-Stainless-Lang = %q, want js", got)
+	}
+	if got := req.Header.Get("X-Stainless-Runtime"); got != "node" {
+		t.Fatalf("X-Stainless-Runtime = %q, want node", got)
 	}
 	billing := claudeCCHFallbackBillingHeaderWithProfile(context.Background(), cfg, []byte(`{"messages":[{"role":"user","content":"x"}]}`), profile)
 	if !strings.Contains(billing, "cc_version=2.1.241.") || !strings.Contains(billing, "cc_entrypoint=sdk-cli;") {
@@ -101,6 +113,41 @@ func TestResolvedClaudeSoftwareProfileHeadersUseResolvedDeviceWithoutStabilizati
 		req.Header.Get("X-Stainless-Os") != profile.Device.OS ||
 		req.Header.Get("X-Stainless-Arch") != profile.Device.Arch {
 		t.Fatalf("resolved device was not applied without stabilization: %#v", req.Header)
+	}
+}
+
+func TestApplyClaudeHeadersWithNativeProfileNilRequest(t *testing.T) {
+	stabilize := true
+	errHeaders := applyClaudeHeadersWithNativeProfile(
+		nil,
+		nil,
+		"key-nil-request",
+		false,
+		nil,
+		nil,
+		&config.Config{ClaudeHeaderDefaults: config.ClaudeHeaderDefaults{StabilizeDeviceProfile: &stabilize}},
+		nil,
+		true,
+		false,
+	)
+	if errHeaders != nil {
+		t.Fatalf("applyClaudeHeadersWithNativeProfile(nil) error = %v", errHeaders)
+	}
+}
+
+func TestResolveIncomingClaudeHeadersMergesDuplicateCasing(t *testing.T) {
+	incoming := http.Header{
+		"user-agent": {"first"},
+		"User-Agent": {"second"},
+	}
+	resolved := resolveIncomingClaudeHeaders(context.Background(), incoming)
+	values := resolved.Values("User-Agent")
+	seen := map[string]bool{}
+	for _, value := range values {
+		seen[value] = true
+	}
+	if len(values) != 2 || !seen["first"] || !seen["second"] {
+		t.Fatalf("resolved User-Agent values = %#v, want both input values", values)
 	}
 }
 
