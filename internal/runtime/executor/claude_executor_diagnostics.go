@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"bufio"
 	"bytes"
 	"strings"
 
@@ -106,37 +107,91 @@ func commitClaudeDiagnostics(state claudeDiagnosticsRequestState, messageID stri
 }
 
 func claudeMessageIDFromResponse(data []byte) string {
-	return strings.TrimSpace(gjson.GetBytes(data, "id").String())
+	if !gjson.ValidBytes(data) {
+		return ""
+	}
+	root := gjson.ParseBytes(data)
+	messageType := root.Get("type")
+	messageID := root.Get("id")
+	if !root.IsObject() || messageType.Type != gjson.String || messageType.String() != "message" || messageID.Type != gjson.String {
+		return ""
+	}
+	return strings.TrimSpace(messageID.String())
 }
 
-func observeClaudeStreamLine(line []byte, messageID *string, completed *bool) {
+type claudeDiagnosticsStreamValidation struct {
+	messageID       string
+	hasData         bool
+	hasMessageStart bool
+	hasMessageDelta bool
+	hasMessageStop  bool
+	invalid         bool
+}
+
+func (validation *claudeDiagnosticsStreamValidation) Observe(line []byte) {
 	line = bytes.TrimSpace(line)
 	if !bytes.HasPrefix(line, []byte("data:")) {
 		return
 	}
 	payload := bytes.TrimSpace(line[len("data:"):])
+	if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
+		return
+	}
+	validation.hasData = true
 	if !gjson.ValidBytes(payload) {
+		validation.invalid = true
 		return
 	}
 	root := gjson.ParseBytes(payload)
-	switch root.Get("type").String() {
+	eventType := root.Get("type")
+	if !root.IsObject() || eventType.Type != gjson.String {
+		validation.invalid = true
+		return
+	}
+	if validation.hasMessageStop {
+		validation.invalid = true
+		return
+	}
+	switch eventType.String() {
+	case "error":
+		validation.invalid = true
 	case "message_start":
-		if id := strings.TrimSpace(root.Get("message.id").String()); id != "" {
-			*messageID = id
+		messageID := root.Get("message.id")
+		model := root.Get("message.model")
+		if validation.hasMessageStart || messageID.Type != gjson.String || strings.TrimSpace(messageID.String()) == "" || model.Type != gjson.String || strings.TrimSpace(model.String()) == "" {
+			validation.invalid = true
+			return
 		}
+		validation.messageID = strings.TrimSpace(messageID.String())
+		validation.hasMessageStart = true
+	case "message_delta":
+		if !validation.hasMessageStart {
+			validation.invalid = true
+			return
+		}
+		validation.hasMessageDelta = true
 	case "message_stop":
-		*completed = true
+		if !validation.hasMessageStart || !validation.hasMessageDelta {
+			validation.invalid = true
+			return
+		}
+		validation.hasMessageStop = true
 	}
 }
 
+func (validation claudeDiagnosticsStreamValidation) Complete() bool {
+	return !validation.invalid && validation.hasData && validation.hasMessageStart && validation.hasMessageDelta && validation.hasMessageStop && validation.messageID != ""
+}
+
 func claudeMessageIDFromSSE(data []byte) string {
-	var messageID string
-	completed := false
-	for _, line := range bytes.Split(data, []byte("\n")) {
-		observeClaudeStreamLine(line, &messageID, &completed)
+	validation := claudeDiagnosticsStreamValidation{}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(nil, 52_428_800)
+	for scanner.Scan() {
+		validation.Observe(scanner.Bytes())
 	}
-	if !completed {
+	if scanner.Err() != nil || !validation.Complete() {
 		return ""
 	}
-	return messageID
+	return validation.messageID
 }

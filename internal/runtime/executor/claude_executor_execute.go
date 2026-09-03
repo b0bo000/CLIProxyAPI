@@ -522,12 +522,13 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		return resp, wrapClaudeFastRequestError(fastRequest, httpResp.StatusCode, err)
 	}
 	helps.AppendAPIResponseChunk(ctx, e.cfg, data)
+	var diagnosticsMessageID string
 	if upstreamStream {
 		if errValidate := validateClaudeStreamingResponse(data); errValidate != nil {
 			helps.RecordAPIResponseError(ctx, e.cfg, errValidate)
 			return resp, wrapClaudeFastRequestError(fastRequest, httpResp.StatusCode, errValidate)
 		}
-		commitClaudeDiagnostics(diagnosticsState, claudeMessageIDFromSSE(data))
+		diagnosticsMessageID = claudeMessageIDFromSSE(data)
 		lines := bytes.Split(data, []byte("\n"))
 		for i, line := range lines {
 			if detail, ok := helps.ParseClaudeStreamUsage(line); ok {
@@ -543,7 +544,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		}
 		data = bytes.Join(lines, []byte("\n"))
 	} else {
-		commitClaudeDiagnostics(diagnosticsState, claudeMessageIDFromResponse(data))
+		diagnosticsMessageID = claudeMessageIDFromResponse(data)
 		reporter.Publish(ctx, helps.ParseClaudeUsage(data))
 		var errRestore error
 		data, errRestore = restoreClaudeOAuthToolNamesFromResponse(data, oauthToolNamesReverseMap)
@@ -568,6 +569,11 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	)
 	if responseFormat == sdktranslator.FormatOpenAIResponse {
 		out = helps.EnsureResponsesUsageDetails(out)
+	}
+	// Commit diagnostics only after restoration and downstream translation have
+	// completed, so upstream 2xx alone cannot advance visible continuity.
+	if len(out) > 0 {
+		commitClaudeDiagnostics(diagnosticsState, diagnosticsMessageID)
 	}
 	commitClaudePrevRequestExecute(ctx, prevRequestState, httpResp.Header, data, out)
 	resp = cliproxyexecutor.Response{Payload: out, Headers: httpResp.Header.Clone()}

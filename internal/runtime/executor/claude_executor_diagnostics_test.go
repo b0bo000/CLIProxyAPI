@@ -130,6 +130,133 @@ func TestClaudeExecutorDiagnosticsAdvancesAfterSuccessfulStream(t *testing.T) {
 	}
 }
 
+func TestClaudeDiagnosticsResponseMessageIDRequiresValidMessage(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "valid message", body: `{"id":"msg_valid","type":"message"}`, want: "msg_valid"},
+		{name: "numeric id", body: `{"id":123,"type":"message"}`},
+		{name: "boolean id", body: `{"id":true,"type":"message"}`},
+		{name: "wrong type", body: `{"id":"msg_wrong_type","type":"error"}`},
+		{name: "missing type", body: `{"id":"msg_missing_type"}`},
+		{name: "empty id", body: `{"id":"  ","type":"message"}`},
+		{name: "malformed JSON", body: `{"id":"msg_malformed","type":"message"`},
+		{name: "array", body: `[{"id":"msg_array","type":"message"}]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := claudeMessageIDFromResponse([]byte(tc.body)); got != tc.want {
+				t.Fatalf("claudeMessageIDFromResponse() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestClaudeDiagnosticsSSERequiresCompleteSequence(t *testing.T) {
+	valid := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_valid\",\"model\":\"claude-opus-5\"}}\n\n" +
+		"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n" +
+		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "complete", body: valid, want: "msg_valid"},
+		{name: "missing delta", body: strings.Replace(valid, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n", "", 1)},
+		{name: "missing stop", body: strings.Replace(valid, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n", "", 1)},
+		{name: "error event", body: strings.Replace(valid, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}", "event: error\ndata: {\"type\":\"error\",\"error\":{\"message\":\"no\"}}", 1)},
+		{name: "duplicate start", body: strings.Replace(valid, "event: message_delta", "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_second\",\"model\":\"claude-opus-5\"}}\n\nevent: message_delta", 1)},
+		{name: "after stop", body: valid + "event: ping\ndata: {}\n\n"},
+		{name: "numeric id", body: strings.Replace(valid, `"id":"msg_valid"`, `"id":123`, 1)},
+		{name: "missing model", body: strings.Replace(valid, `,"model":"claude-opus-5"`, "", 1)},
+		{name: "malformed data", body: strings.Replace(valid, `data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}`, `data: {"type":"message_delta","delta":`, 1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := claudeMessageIDFromSSE([]byte(tc.body)); got != tc.want {
+				t.Fatalf("claudeMessageIDFromSSE() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestClaudeExecutorDiagnosticsDoesNotAdvanceAfterInvalidJSONMessage(t *testing.T) {
+	testID := uuid.NewString()
+	cfg, auth, request, options := claudePrevRequestFixture(t, "diagnostics-invalid-json-"+testID, uuid.NewString())
+	var bodies [][]byte
+	call := 0
+	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		body, errRead := io.ReadAll(req.Body)
+		if errRead != nil {
+			return nil, errRead
+		}
+		bodies = append(bodies, body)
+		call++
+		responseBody := `{"id":"msg_diag_seed","type":"message","model":"claude-opus-5","role":"assistant","content":[]}`
+		if call == 2 {
+			responseBody = `{"id":123,"type":"message","model":"claude-opus-5","role":"assistant","content":[]}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(responseBody)), Request: req}, nil
+	})
+	executor := NewClaudeExecutor(cfg)
+	for turn := 0; turn < 3; turn++ {
+		if _, errExecute := executor.Execute(context.WithValue(context.Background(), "cliproxy.roundtripper", transport), auth, request, options); errExecute != nil {
+			t.Fatalf("Execute() turn %d error = %v", turn+1, errExecute)
+		}
+	}
+	if got := gjson.GetBytes(bodies[1], "diagnostics.previous_message_id").String(); got != "msg_diag_seed" {
+		t.Fatalf("invalid response diagnostics previous_message_id = %q, want seed", got)
+	}
+	if got := gjson.GetBytes(bodies[2], "diagnostics.previous_message_id").String(); got != "msg_diag_seed" {
+		t.Fatalf("post-invalid diagnostics previous_message_id = %q, want seed", got)
+	}
+}
+
+func TestClaudeExecutorDiagnosticsStreamDoesNotAdvanceAfterIncompleteSSE(t *testing.T) {
+	testID := uuid.NewString()
+	cfg, auth, request, options := claudePrevRequestFixture(t, "diagnostics-incomplete-stream-"+testID, uuid.NewString())
+	request.Payload = []byte(strings.Replace(string(request.Payload), `"max_tokens":16}`, `"max_tokens":16,"stream":true}`, 1))
+	options.OriginalRequest = request.Payload
+	valid := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream_seed\",\"model\":\"claude-opus-5\"}}\n\n" +
+		"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n" +
+		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+	incomplete := strings.Replace(valid, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n", "", 1)
+	var bodies [][]byte
+	call := 0
+	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		body, errRead := io.ReadAll(req.Body)
+		if errRead != nil {
+			return nil, errRead
+		}
+		bodies = append(bodies, body)
+		call++
+		stream := valid
+		if call == 2 {
+			stream = incomplete
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(stream)), Request: req}, nil
+	})
+	executor := NewClaudeExecutor(cfg)
+	for turn := 0; turn < 3; turn++ {
+		result, errStream := executor.ExecuteStream(context.WithValue(context.Background(), "cliproxy.roundtripper", transport), auth, request, options)
+		if errStream != nil {
+			t.Fatalf("ExecuteStream() turn %d error = %v", turn+1, errStream)
+		}
+		for chunk := range result.Chunks {
+			if chunk.Err != nil {
+				t.Fatalf("stream chunk error = %v", chunk.Err)
+			}
+		}
+	}
+	if got := gjson.GetBytes(bodies[1], "diagnostics.previous_message_id").String(); got != "msg_stream_seed" {
+		t.Fatalf("incomplete stream diagnostics previous_message_id = %q, want seed", got)
+	}
+	if got := gjson.GetBytes(bodies[2], "diagnostics.previous_message_id").String(); got != "msg_stream_seed" {
+		t.Fatalf("post-incomplete diagnostics previous_message_id = %q, want seed", got)
+	}
+}
+
 func TestClaudeDiagnosticsEligibilityRequiresConfirmedNativeAnthropicRequest(t *testing.T) {
 	confirmed := helps.ResolvedClaudeSoftwareProfile{Confirmed: true, Provenance: helps.ClaudeSoftwareProfileDetected}
 	configured := helps.ResolvedClaudeSoftwareProfile{Confirmed: false, Provenance: helps.ClaudeSoftwareProfileConfiguredCLI}
@@ -182,7 +309,7 @@ func TestBeginClaudeDiagnosticsDoesNotCreateStateForUnconfirmedProfile(t *testin
 func TestClaudeMessageIDFromSSECommitsOnlyCompletedMessage(t *testing.T) {
 	t.Parallel()
 
-	complete := []byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_complete\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+	complete := []byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_complete\",\"model\":\"claude-opus-5\"}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
 	if got := claudeMessageIDFromSSE(complete); got != "msg_complete" {
 		t.Fatalf("completed SSE message ID = %q, want msg_complete", got)
 	}

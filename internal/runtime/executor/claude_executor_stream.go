@@ -333,8 +333,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			scanner := bufio.NewScanner(decodedBody)
 			scanner.Buffer(nil, 52_428_800) // 50MB
 			var event bytes.Buffer
-			var upstreamMessageID string
-			upstreamCompleted := false
+			diagnosticsValidation := claudeDiagnosticsStreamValidation{}
 			flushEvent := func() bool {
 				if event.Len() == 0 {
 					return true
@@ -351,7 +350,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			for scanner.Scan() {
 				line := scanner.Bytes()
 				prevRequestValidation.Observe(line)
-				observeClaudeStreamLine(line, &upstreamMessageID, &upstreamCompleted)
+				diagnosticsValidation.Observe(line)
 				helps.AppendAPIResponseChunk(ctx, e.cfg, line)
 				if detail, ok := helps.ParseClaudeStreamUsage(line); ok {
 					reporter.Publish(ctx, detail)
@@ -386,8 +385,8 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 				}
 				return
 			}
-			if upstreamCompleted {
-				commitClaudeDiagnostics(diagnosticsState, upstreamMessageID)
+			if diagnosticsValidation.Complete() {
+				commitClaudeDiagnostics(diagnosticsState, diagnosticsValidation.messageID)
 			}
 			if prevRequestValidation.Complete() {
 				commitClaudePrevRequestState(ctx, prevRequestState, httpResp.Header)
@@ -399,12 +398,11 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		scanner := bufio.NewScanner(decodedBody)
 		scanner.Buffer(nil, 52_428_800) // 50MB
 		var param any
-		var upstreamMessageID string
-		upstreamCompleted := false
+		diagnosticsValidation := claudeDiagnosticsStreamValidation{}
 		for scanner.Scan() {
 			line := scanner.Bytes()
 			prevRequestValidation.Observe(line)
-			observeClaudeStreamLine(line, &upstreamMessageID, &upstreamCompleted)
+			diagnosticsValidation.Observe(line)
 			helps.AppendAPIResponseChunk(ctx, e.cfg, line)
 			if detail, ok := helps.ParseClaudeStreamUsage(line); ok {
 				reporter.Publish(ctx, detail)
@@ -452,8 +450,8 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			}
 			return
 		}
-		if upstreamCompleted {
-			commitClaudeDiagnostics(diagnosticsState, upstreamMessageID)
+		if diagnosticsValidation.Complete() {
+			commitClaudeDiagnostics(diagnosticsState, diagnosticsValidation.messageID)
 		}
 		if prevRequestValidation.Complete() {
 			commitClaudePrevRequestState(ctx, prevRequestState, httpResp.Header)
