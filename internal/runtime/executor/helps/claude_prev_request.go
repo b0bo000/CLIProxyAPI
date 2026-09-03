@@ -82,7 +82,7 @@ func CommitClaudePrevRequest(key string, sequence uint64, requestID string) {
 	claudePrevRequestState.Lock()
 	defer claudePrevRequestState.Unlock()
 	entry, ok := claudePrevRequestState.entries[key]
-	if !ok || sequence < entry.minimumSequence || (entry.committedSequence != 0 && sequence <= entry.committedSequence) {
+	if !ok || (!entry.expiresAt.IsZero() && !now.Before(entry.expiresAt)) || sequence < entry.minimumSequence || (entry.committedSequence != 0 && sequence <= entry.committedSequence) {
 		return
 	}
 	claudePrevRequestState.nextAccess++

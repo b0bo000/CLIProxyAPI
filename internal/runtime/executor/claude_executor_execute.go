@@ -3,9 +3,11 @@ package executor
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/thinking"
@@ -15,6 +17,146 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 )
+
+const claudePrevRequestProbeID = "req_cpa_prev_request_probe"
+
+type claudePrevRequestExecuteState struct {
+	key      string
+	sequence uint64
+}
+
+type claudePrevRequestRequestError struct {
+	cause error
+}
+
+func (e *claudePrevRequestRequestError) Error() string {
+	if e == nil || e.cause == nil {
+		return ""
+	}
+	return e.cause.Error()
+}
+
+func (e *claudePrevRequestRequestError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
+func (e *claudePrevRequestRequestError) StatusCode() int {
+	if e == nil {
+		return 0
+	}
+	return http.StatusBadRequest
+}
+
+func (e *claudePrevRequestRequestError) IsRequestScoped() bool {
+	return e != nil
+}
+
+func newClaudePrevRequestRequestError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &claudePrevRequestRequestError{cause: err}
+}
+
+func beginClaudePrevRequestExecute(
+	body []byte,
+	auth *cliproxyauth.Auth,
+	apiKey string,
+	sessionScope, baseURL string,
+	softwareProfile helps.ResolvedClaudeSoftwareProfile,
+	upstreamStream bool,
+) ([]byte, claudePrevRequestExecuteState, error) {
+	if upstreamStream || !isAnthropicUpstreamBase(baseURL) || !softwareProfile.Confirmed || softwareProfile.IsHelperProfile() {
+		return body, claudePrevRequestExecuteState{}, nil
+	}
+	credentialIdentity := claudePrevRequestCredentialIdentity(auth, apiKey)
+	if credentialIdentity == "" || strings.TrimSpace(sessionScope) == "" {
+		return body, claudePrevRequestExecuteState{}, nil
+	}
+
+	// A probe through the same parser proves that a valid billing block exists
+	// and is missing cc_prev_req. An unchanged result means either no billing
+	// block or a caller-owned value, neither of which CPA may take over.
+	probe, errProbe := insertClaudePrevRequestBilling(body, claudePrevRequestProbeID)
+	if errProbe != nil {
+		return nil, claudePrevRequestExecuteState{}, newClaudePrevRequestRequestError(errProbe)
+	}
+	if bytes.Equal(probe, body) {
+		return body, claudePrevRequestExecuteState{}, nil
+	}
+
+	key, sequence, previousRequestID := helps.BeginClaudePrevRequest(credentialIdentity, sessionScope)
+	state := claudePrevRequestExecuteState{key: key, sequence: sequence}
+	if key == "" || previousRequestID == "" {
+		return body, state, nil
+	}
+	updated, errInsert := insertClaudePrevRequestBilling(body, previousRequestID)
+	if errInsert != nil {
+		return nil, claudePrevRequestExecuteState{}, newClaudePrevRequestRequestError(errInsert)
+	}
+	return updated, state, nil
+}
+
+func claudePrevRequestCredentialIdentity(auth *cliproxyauth.Auth, apiKey string) string {
+	if auth == nil {
+		return ""
+	}
+	recordIdentity := strings.TrimSpace(helps.ClaudeCLIAuthIdentitySeed(auth))
+	accountUUID := strings.TrimSpace(helps.ClaudeCredentialAccountUUID(auth))
+	if recordIdentity == "" {
+		return ""
+	}
+	if accountUUID != "" {
+		return recordIdentity + "\x00account:" + accountUUID
+	}
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" || isClaudeOAuthToken(apiKey) {
+		return ""
+	}
+	digest := sha256.Sum256([]byte(apiKey))
+	return fmt.Sprintf("%s\x00api-key:%x", recordIdentity, digest)
+}
+
+func commitClaudePrevRequestExecute(ctx context.Context, state claudePrevRequestExecuteState, headers http.Header, upstreamBody, translatedBody []byte) {
+	if state.key == "" || state.sequence == 0 || len(translatedBody) == 0 || !gjson.ValidBytes(upstreamBody) || !gjson.ValidBytes(translatedBody) {
+		return
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return
+	}
+	root := gjson.ParseBytes(upstreamBody)
+	if !root.IsObject() || root.Get("type").String() != "message" || strings.TrimSpace(root.Get("id").String()) == "" {
+		return
+	}
+	requestID, errRequestID := claudePrevRequestIDHeader(headers)
+	if errRequestID != nil {
+		return
+	}
+	helps.CommitClaudePrevRequest(state.key, state.sequence, requestID)
+}
+
+func claudePrevRequestIDHeader(headers http.Header) (string, error) {
+	if headers == nil {
+		return "", fmt.Errorf("Claude request-id response header is missing")
+	}
+	var values []string
+	for key, headerValues := range headers {
+		if !strings.EqualFold(key, "request-id") {
+			continue
+		}
+		values = append(values, headerValues...)
+	}
+	if len(values) != 1 {
+		return "", fmt.Errorf("Claude request-id response header has %d values, want exactly one", len(values))
+	}
+	if errID := validateClaudePrevRequestID(values[0]); errID != nil {
+		return "", errID
+	}
+	return values[0], nil
+}
 
 func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
 	if opts.Alt == "responses/compact" {
@@ -64,8 +206,12 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	}
 	confirmedClaudeCode := softwareProfile.Confirmed
 	claudeSessionID := ""
-	if fp.ProfileClaudeCodeCLI {
+	claudePrevRequestScope := ""
+	if confirmedClaudeCode || fp.ProfileClaudeCodeCLI {
 		claudeSessionID = helps.ClaudeAgentSessionUUIDForRequest(incomingHeaders, originalPayload, req.Payload, confirmedClaudeCode, opts.Metadata, req.Metadata)
+		if scope, ok := helps.ClaudeCodeExecutionScope(ctx, originalPayload, incomingHeaders); ok {
+			claudePrevRequestScope = scope
+		}
 	}
 	originalTranslated := helps.TranslateRequestWithAPIKeyModelCompatibility(ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, upstreamStream, helps.APIKeyModelIsCompat(req))
 	body := helps.TranslateRequestWithAPIKeyModelCompatibility(ctx, opts.Headers, e.cfg, from, to, baseModel, req.Payload, upstreamStream, helps.APIKeyModelIsCompat(req))
@@ -180,6 +326,19 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		if err != nil {
 			return resp, err
 		}
+	}
+	var prevRequestState claudePrevRequestExecuteState
+	bodyForUpstream, prevRequestState, err = beginClaudePrevRequestExecute(
+		bodyForUpstream,
+		auth,
+		apiKey,
+		claudePrevRequestScope,
+		baseURL,
+		softwareProfile,
+		upstreamStream,
+	)
+	if err != nil {
+		return resp, err
 	}
 	cchBilling := ""
 	if cchSigning {
@@ -341,6 +500,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	if responseFormat == sdktranslator.FormatOpenAIResponse {
 		out = helps.EnsureResponsesUsageDetails(out)
 	}
+	commitClaudePrevRequestExecute(ctx, prevRequestState, httpResp.Header, data, out)
 	resp = cliproxyexecutor.Response{Payload: out, Headers: httpResp.Header.Clone()}
 	return resp, nil
 }

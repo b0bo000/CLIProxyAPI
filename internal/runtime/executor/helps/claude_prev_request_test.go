@@ -81,6 +81,24 @@ func TestClaudePrevRequestRejectsExpiredGenerationCommit(t *testing.T) {
 	}
 }
 
+func TestClaudePrevRequestRejectsDirectLateCommitAfterExpiry(t *testing.T) {
+	resetClaudePrevRequestForTest()
+	defer resetClaudePrevRequestForTest()
+
+	key, sequence, _ := BeginClaudePrevRequest("credential", "session")
+	claudePrevRequestState.Lock()
+	entry := claudePrevRequestState.entries[key]
+	entry.expiresAt = time.Now().Add(-time.Second)
+	claudePrevRequestState.entries[key] = entry
+	claudePrevRequestState.Unlock()
+
+	CommitClaudePrevRequest(key, sequence, "req_late")
+	_, _, previous := BeginClaudePrevRequest("credential", "session")
+	if previous != "" {
+		t.Fatalf("previous request after direct late commit = %q, want empty", previous)
+	}
+}
+
 func TestClaudePrevRequestCacheEvictsOldestEntriesWithinCapacity(t *testing.T) {
 	resetClaudePrevRequestForTest()
 	defer resetClaudePrevRequestForTest()

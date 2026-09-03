@@ -451,11 +451,14 @@ func validateClaudePrevRequestID(requestID string) error {
 	if requestID == "" {
 		return fmt.Errorf("insert Claude cc_prev_req: empty request ID")
 	}
+	if len(requestID) > 128 {
+		return fmt.Errorf("insert Claude cc_prev_req: request ID is too long")
+	}
 	if strings.TrimSpace(requestID) != requestID || strings.ContainsAny(requestID, ";=\r\n") {
 		return fmt.Errorf("insert Claude cc_prev_req: invalid request ID")
 	}
 	for _, r := range requestID {
-		if unicode.IsSpace(r) || unicode.IsControl(r) {
+		if r < 0x21 || r > 0x7e || unicode.IsSpace(r) || unicode.IsControl(r) {
 			return fmt.Errorf("insert Claude cc_prev_req: invalid request ID")
 		}
 	}
