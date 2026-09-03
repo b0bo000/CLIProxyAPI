@@ -1,46 +1,11 @@
 package executor
 
 import (
-	"context"
-	"errors"
-	"net/http"
 	"strings"
 	"testing"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/config"
-	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 	"github.com/tidwall/gjson"
 )
-
-func TestClaudeExecutorsRejectMalformedPromptBoundaryIdentically(t *testing.T) {
-	t.Parallel()
-
-	ctx := cliproxyexecutor.WithPromptBoundary(context.Background(), cliproxyexecutor.PromptBoundaryHint{
-		Kind:          cliproxyexecutor.PromptBoundaryContinue,
-		TransactionID: "invalid transaction",
-	})
-	executor := NewClaudeExecutor(&config.Config{})
-	auth := &cliproxyauth.Auth{}
-	request := cliproxyexecutor.Request{Model: "claude-sonnet-4-6"}
-	options := cliproxyexecutor.Options{}
-
-	_, executeErr := executor.Execute(ctx, auth, request, options)
-	_, streamErr := executor.ExecuteStream(ctx, auth, request, options)
-	for name, errRun := range map[string]error{"Execute": executeErr, "ExecuteStream": streamErr} {
-		if errRun == nil {
-			t.Fatalf("%s error = nil, want malformed prompt-boundary rejection", name)
-		}
-		var status interface{ StatusCode() int }
-		if !errors.As(errRun, &status) || status.StatusCode() != http.StatusBadRequest {
-			t.Fatalf("%s error = %T %v, want HTTP 400", name, errRun, errRun)
-		}
-		var scoped interface{ IsRequestScoped() bool }
-		if !errors.As(errRun, &scoped) || !scoped.IsRequestScoped() {
-			t.Fatalf("%s error = %T %v, want request-scoped", name, errRun, errRun)
-		}
-	}
-}
 
 func TestInsertClaudePrevRequestBillingPreservesCallerPromptID(t *testing.T) {
 	t.Parallel()

@@ -174,33 +174,3 @@ tool-loops, retries, cancellation recovery, restart/resume, subagents and
 parallel requests. B-12 remains `CONFIRMED_DIFFERENCE`, G-03 remains
 `CAPTURED_B_PARTIAL`, G-04 remains `CAPTURED_B_BOUNDARY_LIMITED`, and release
 remains `NOT STRICTLY EQUIVALENT`.
-
-## S5-3-A execution log (2026-09-03)
-
-S5-3-A adds only the explicit adapter-owned boundary contract. The SDK now
-offers a private-context-key carrier with `absent`, `new`, `continue` and
-`ambiguous` kinds plus an opaque adapter transaction key. The Claude helper
-validates the combinations and returns a request-scoped HTTP 400 for unknown,
-malformed or contradictory hints. Execute and ExecuteStream run the same
-pre-upstream validation guard.
-
-This step does not allocate, persist, insert or commit `cc_prompt_id`; it does
-not infer boundaries from headers, body, session/request/message IDs, PID,
-timing or hashes; and an absent hint leaves the wire request unchanged. The
-change card is `docs/change-cards/CC-20260903-S5-3A-PROMPT-BOUNDARY-CONTRACT.md`.
-
-Validation on the modified tree returned
-`CONTRACT_STATIC_OK MODE=MODIFIED CONTEXT_API=1 RESOLVER=1 EXECUTOR_GUARDS=2 PROMPT_GENERATOR=0`.
-The exact `704f980a` baseline returned
-`CONTRACT_STATIC_OK MODE=BASELINE CONTEXT_API=0 RESOLVER=0 EXECUTOR_GUARDS=0 PROMPT_GENERATOR=0`.
-The independent-copy forward application, modified check, reverse rollback,
-restored baseline check, `git diff --check` and clean-status check all exited
-0. Local Go tests/builds were not run because the repository validation policy
-prohibits compilation-heavy local commands; the authorized remote host had no
-`go` executable. The evidence package is
-`artifacts/CPA-CLAUDECODE-S5-3A-PROMPT-BOUNDARY-CONTRACT-20260903/`.
-
-S5-3-B remains unopened: a trusted adapter must still supply real lifecycle
-events, and only a separately approved step may add lifecycle state or decide
-whether a missing prompt ID can ever be generated. Release remains
-`NOT STRICTLY EQUIVALENT`.
