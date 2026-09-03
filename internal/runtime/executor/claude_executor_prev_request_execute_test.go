@@ -365,7 +365,7 @@ func TestClaudeExecutorPrevRequestCommitRejectsNonStringMessageID(t *testing.T) 
 	credentialID := "s4a3-message-id-" + uuid.NewString()
 	sessionScope := "s4a3-session-" + uuid.NewString()
 	key, sequence, _ := helps.BeginClaudePrevRequest(credentialID, sessionScope)
-	state := claudePrevRequestExecuteState{key: key, sequence: sequence}
+	state := claudePrevRequestState{key: key, sequence: sequence}
 
 	for _, upstreamBody := range [][]byte{
 		[]byte(`{"type":"message","id":123}`),

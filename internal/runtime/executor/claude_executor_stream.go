@@ -67,8 +67,12 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	}
 	confirmedClaudeCode := softwareProfile.Confirmed
 	claudeSessionID := ""
-	if fp.ProfileClaudeCodeCLI {
+	claudePrevRequestScope := ""
+	if confirmedClaudeCode || fp.ProfileClaudeCodeCLI {
 		claudeSessionID = helps.ClaudeAgentSessionUUIDForRequest(incomingHeaders, originalPayload, req.Payload, confirmedClaudeCode, opts.Metadata, req.Metadata)
+		if scope, ok := helps.ClaudeCodeExecutionScope(ctx, originalPayload, incomingHeaders); ok {
+			claudePrevRequestScope = scope
+		}
 	}
 	originalTranslated := helps.TranslateRequestWithAPIKeyModelCompatibility(ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, true, helps.APIKeyModelIsCompat(req))
 	body := helps.TranslateRequestWithAPIKeyModelCompatibility(ctx, opts.Headers, e.cfg, from, to, baseModel, req.Payload, true, helps.APIKeyModelIsCompat(req))
@@ -172,6 +176,18 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		if err != nil {
 			return nil, err
 		}
+	}
+	var prevRequestState claudePrevRequestState
+	bodyForUpstream, prevRequestState, err = beginClaudePrevRequest(
+		bodyForUpstream,
+		auth,
+		apiKey,
+		claudePrevRequestScope,
+		baseURL,
+		softwareProfile,
+	)
+	if err != nil {
+		return nil, err
 	}
 	cchBilling := ""
 	if cchSigning {
@@ -306,6 +322,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			}
 		}
 
+		prevRequestValidation := claudePrevRequestStreamValidation{}
 		// If the response target is Claude, directly forward complete SSE events without translation.
 		if responseFormat == to {
 			scanner := bufio.NewScanner(decodedBody)
@@ -328,6 +345,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			}
 			for scanner.Scan() {
 				line := scanner.Bytes()
+				prevRequestValidation.Observe(line)
 				observeClaudeStreamLine(line, &upstreamMessageID, &upstreamCompleted)
 				helps.AppendAPIResponseChunk(ctx, e.cfg, line)
 				if detail, ok := helps.ParseClaudeStreamUsage(line); ok {
@@ -366,6 +384,9 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			if upstreamCompleted {
 				commitClaudeDiagnostics(diagnosticsState, upstreamMessageID)
 			}
+			if prevRequestValidation.Complete() {
+				commitClaudePrevRequestState(ctx, prevRequestState, httpResp.Header)
+			}
 			return
 		}
 
@@ -377,6 +398,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		upstreamCompleted := false
 		for scanner.Scan() {
 			line := scanner.Bytes()
+			prevRequestValidation.Observe(line)
 			observeClaudeStreamLine(line, &upstreamMessageID, &upstreamCompleted)
 			helps.AppendAPIResponseChunk(ctx, e.cfg, line)
 			if detail, ok := helps.ParseClaudeStreamUsage(line); ok {
@@ -428,12 +450,77 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		if upstreamCompleted {
 			commitClaudeDiagnostics(diagnosticsState, upstreamMessageID)
 		}
+		if prevRequestValidation.Complete() {
+			commitClaudePrevRequestState(ctx, prevRequestState, httpResp.Header)
+		}
 	}()
 	result := &cliproxyexecutor.StreamResult{Headers: httpResp.Header.Clone(), Chunks: out}
 	if replayScope.valid() {
 		result = wrapClaudeThinkingReplayStream(ctx, result, replayScope)
 	}
 	return result, nil
+}
+
+type claudePrevRequestStreamValidation struct {
+	hasData         bool
+	hasMessageStart bool
+	hasMessageDelta bool
+	hasMessageStop  bool
+	invalid         bool
+}
+
+func (validation *claudePrevRequestStreamValidation) Observe(line []byte) {
+	line = bytes.TrimSpace(line)
+	if len(line) == 0 || !bytes.HasPrefix(line, []byte("data:")) {
+		return
+	}
+	payload := bytes.TrimSpace(line[len("data:"):])
+	if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
+		return
+	}
+	validation.hasData = true
+	if !gjson.ValidBytes(payload) {
+		validation.invalid = true
+		return
+	}
+	root := gjson.ParseBytes(payload)
+	eventType := root.Get("type")
+	if !root.IsObject() || eventType.Type != gjson.String {
+		validation.invalid = true
+		return
+	}
+	if validation.hasMessageStop {
+		validation.invalid = true
+		return
+	}
+	switch eventType.String() {
+	case "error":
+		validation.invalid = true
+	case "message_start":
+		messageID := root.Get("message.id")
+		model := root.Get("message.model")
+		if validation.hasMessageStart || messageID.Type != gjson.String || strings.TrimSpace(messageID.String()) == "" || model.Type != gjson.String || strings.TrimSpace(model.String()) == "" {
+			validation.invalid = true
+			return
+		}
+		validation.hasMessageStart = true
+	case "message_delta":
+		if !validation.hasMessageStart {
+			validation.invalid = true
+			return
+		}
+		validation.hasMessageDelta = true
+	case "message_stop":
+		if !validation.hasMessageStart || !validation.hasMessageDelta {
+			validation.invalid = true
+			return
+		}
+		validation.hasMessageStop = true
+	}
+}
+
+func (validation claudePrevRequestStreamValidation) Complete() bool {
+	return !validation.invalid && validation.hasData && validation.hasMessageStart && validation.hasMessageDelta && validation.hasMessageStop
 }
 
 func validateClaudeStreamingResponse(data []byte) error {

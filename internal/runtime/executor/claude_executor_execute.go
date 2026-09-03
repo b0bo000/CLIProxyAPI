@@ -20,7 +20,7 @@ import (
 
 const claudePrevRequestProbeID = "req_cpa_prev_request_probe"
 
-type claudePrevRequestExecuteState struct {
+type claudePrevRequestState struct {
 	key      string
 	sequence uint64
 }
@@ -68,13 +68,26 @@ func beginClaudePrevRequestExecute(
 	sessionScope, baseURL string,
 	softwareProfile helps.ResolvedClaudeSoftwareProfile,
 	upstreamStream bool,
-) ([]byte, claudePrevRequestExecuteState, error) {
-	if upstreamStream || !isAnthropicUpstreamBase(baseURL) || !softwareProfile.Confirmed || softwareProfile.IsHelperProfile() {
-		return body, claudePrevRequestExecuteState{}, nil
+) ([]byte, claudePrevRequestState, error) {
+	if upstreamStream {
+		return body, claudePrevRequestState{}, nil
+	}
+	return beginClaudePrevRequest(body, auth, apiKey, sessionScope, baseURL, softwareProfile)
+}
+
+func beginClaudePrevRequest(
+	body []byte,
+	auth *cliproxyauth.Auth,
+	apiKey string,
+	sessionScope, baseURL string,
+	softwareProfile helps.ResolvedClaudeSoftwareProfile,
+) ([]byte, claudePrevRequestState, error) {
+	if !isAnthropicUpstreamBase(baseURL) || !softwareProfile.Confirmed || softwareProfile.IsHelperProfile() {
+		return body, claudePrevRequestState{}, nil
 	}
 	credentialIdentity := claudePrevRequestCredentialIdentity(auth, apiKey)
 	if credentialIdentity == "" || strings.TrimSpace(sessionScope) == "" {
-		return body, claudePrevRequestExecuteState{}, nil
+		return body, claudePrevRequestState{}, nil
 	}
 
 	// A probe through the same parser proves that a valid billing block exists
@@ -82,20 +95,20 @@ func beginClaudePrevRequestExecute(
 	// block or a caller-owned value, neither of which CPA may take over.
 	probe, errProbe := insertClaudePrevRequestBilling(body, claudePrevRequestProbeID)
 	if errProbe != nil {
-		return nil, claudePrevRequestExecuteState{}, newClaudePrevRequestRequestError(errProbe)
+		return nil, claudePrevRequestState{}, newClaudePrevRequestRequestError(errProbe)
 	}
 	if bytes.Equal(probe, body) {
-		return body, claudePrevRequestExecuteState{}, nil
+		return body, claudePrevRequestState{}, nil
 	}
 
 	key, sequence, previousRequestID := helps.BeginClaudePrevRequest(credentialIdentity, sessionScope)
-	state := claudePrevRequestExecuteState{key: key, sequence: sequence}
+	state := claudePrevRequestState{key: key, sequence: sequence}
 	if key == "" || previousRequestID == "" {
 		return body, state, nil
 	}
 	updated, errInsert := insertClaudePrevRequestBilling(body, previousRequestID)
 	if errInsert != nil {
-		return nil, claudePrevRequestExecuteState{}, newClaudePrevRequestRequestError(errInsert)
+		return nil, claudePrevRequestState{}, newClaudePrevRequestRequestError(errInsert)
 	}
 	return updated, state, nil
 }
@@ -143,7 +156,7 @@ func claudePrevRequestCredentialIdentity(auth *cliproxyauth.Auth, apiKey string)
 	return ""
 }
 
-func commitClaudePrevRequestExecute(ctx context.Context, state claudePrevRequestExecuteState, headers http.Header, upstreamBody, translatedBody []byte) {
+func commitClaudePrevRequestExecute(ctx context.Context, state claudePrevRequestState, headers http.Header, upstreamBody, translatedBody []byte) {
 	if state.key == "" || state.sequence == 0 || len(translatedBody) == 0 || !gjson.ValidBytes(upstreamBody) || !gjson.ValidBytes(translatedBody) {
 		return
 	}
@@ -154,6 +167,16 @@ func commitClaudePrevRequestExecute(ctx context.Context, state claudePrevRequest
 	messageType := root.Get("type")
 	messageID := root.Get("id")
 	if !root.IsObject() || messageType.Type != gjson.String || messageType.String() != "message" || messageID.Type != gjson.String || strings.TrimSpace(messageID.String()) == "" {
+		return
+	}
+	commitClaudePrevRequestState(ctx, state, headers)
+}
+
+func commitClaudePrevRequestState(ctx context.Context, state claudePrevRequestState, headers http.Header) {
+	if state.key == "" || state.sequence == 0 {
+		return
+	}
+	if ctx != nil && ctx.Err() != nil {
 		return
 	}
 	requestID, errRequestID := claudePrevRequestIDHeader(headers)
@@ -352,7 +375,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 			return resp, err
 		}
 	}
-	var prevRequestState claudePrevRequestExecuteState
+	var prevRequestState claudePrevRequestState
 	bodyForUpstream, prevRequestState, err = beginClaudePrevRequestExecute(
 		bodyForUpstream,
 		auth,
