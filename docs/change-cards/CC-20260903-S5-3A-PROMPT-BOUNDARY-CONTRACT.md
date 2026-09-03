@@ -96,8 +96,6 @@ does not close B-12 and cannot change the release state from
 
 ## Implementation Record
 
-- Commits: `b6493c9d` (contract, resolver and tests), `a8c51445` (executable
-  rollback artifact).
 - Files changed: the eight allowed source/test/card paths plus this step's
   evidence package and the S5 execution log.
 - Default behavior: preserved; an absent hint resolves to `absent` and creates
