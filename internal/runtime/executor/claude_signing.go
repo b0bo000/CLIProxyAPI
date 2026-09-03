@@ -71,8 +71,8 @@ func claudeBodyNeedsBillingFallback(body []byte) bool {
 }
 
 func ensureClaudeBillingHeaderCCHPlaceholder(body []byte, fallbackBilling string) ([]byte, error) {
-	billing := gjson.GetBytes(body, "system.0.text")
-	if billing.Type != gjson.String || !strings.HasPrefix(billing.String(), "x-anthropic-billing-header:") {
+	billing, billingPath := claudeBillingTextForCCH(body)
+	if billingPath == "" {
 		if fallbackBilling == "" {
 			return body, nil
 		}
@@ -81,7 +81,7 @@ func ensureClaudeBillingHeaderCCHPlaceholder(body []byte, fallbackBilling string
 		if errPrepend != nil {
 			return nil, errPrepend
 		}
-		billing = gjson.GetBytes(body, "system.0.text")
+		billing, billingPath = claudeBillingTextForCCH(body)
 	}
 	if _, ok := claudeBillingCCHDigitsOffset(body); ok {
 		return body, nil
@@ -98,11 +98,23 @@ func ensureClaudeBillingHeaderCCHPlaceholder(body []byte, fallbackBilling string
 	}
 	insertAt := entrypoint + entrypointEnd + 1
 	billingText = billingText[:insertAt] + " cch=00000;" + billingText[insertAt:]
-	updated, err := sjson.SetBytes(body, "system.0.text", billingText)
+	updated, err := sjson.SetBytes(body, billingPath, billingText)
 	if err != nil {
 		return nil, fmt.Errorf("insert Claude CCH placeholder: %w", err)
 	}
 	return updated, nil
+}
+
+func claudeBillingTextForCCH(body []byte) (gjson.Result, string) {
+	system := gjson.GetBytes(body, "system")
+	if system.Type == gjson.String && strings.HasPrefix(strings.TrimSpace(system.String()), claudeBillingHeaderPrefix) {
+		return system, "system"
+	}
+	billing := gjson.GetBytes(body, "system.0.text")
+	if billing.Type == gjson.String && strings.HasPrefix(strings.TrimSpace(billing.String()), claudeBillingHeaderPrefix) {
+		return billing, "system.0.text"
+	}
+	return gjson.Result{}, ""
 }
 
 func prependClaudeBillingSystemBlock(body []byte, billingText string) ([]byte, error) {
@@ -236,8 +248,8 @@ func signAnthropicMessagesBody(body []byte) ([]byte, error) {
 }
 
 func claudeBillingCCHDigitsOffset(body []byte) (int, bool) {
-	billing := gjson.GetBytes(body, "system.0.text")
-	if billing.Type != gjson.String || !strings.HasPrefix(billing.String(), "x-anthropic-billing-header:") {
+	billing, path := claudeBillingTextForCCH(body)
+	if path == "" {
 		return 0, false
 	}
 

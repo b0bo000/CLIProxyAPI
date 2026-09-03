@@ -361,6 +361,25 @@ func TestClaudeExecutorPrevRequestIDHeaderRequiresOneBoundedASCIIValue(t *testin
 	}
 }
 
+func TestClaudeExecutorPrevRequestCommitRejectsNonStringMessageID(t *testing.T) {
+	credentialID := "s4a3-message-id-" + uuid.NewString()
+	sessionScope := "s4a3-session-" + uuid.NewString()
+	key, sequence, _ := helps.BeginClaudePrevRequest(credentialID, sessionScope)
+	state := claudePrevRequestExecuteState{key: key, sequence: sequence}
+
+	for _, upstreamBody := range [][]byte{
+		[]byte(`{"type":"message","id":123}`),
+		[]byte(`{"type":"message","id":true}`),
+		[]byte(`{"type":"message","id":{"value":"msg"}}`),
+	} {
+		commitClaudePrevRequestExecute(context.Background(), state, http.Header{"Request-Id": {"req_must_not_commit"}}, upstreamBody, upstreamBody)
+	}
+	_, _, previous := helps.BeginClaudePrevRequest(credentialID, sessionScope)
+	if previous != "" {
+		t.Fatalf("previous request after non-string message id = %q, want empty", previous)
+	}
+}
+
 func TestClaudeExecutorPrevRequestMalformedBillingIsRequestScoped(t *testing.T) {
 	_, auth, request, _ := claudePrevRequestFixture(t, "s4a3-malformed-"+uuid.NewString(), uuid.NewString())
 	request.Payload = bytes.Replace(request.Payload, []byte("cc_entrypoint=sdk-cli"), []byte("cc_entrypoint"), 1)

@@ -151,7 +151,9 @@ func commitClaudePrevRequestExecute(ctx context.Context, state claudePrevRequest
 		return
 	}
 	root := gjson.ParseBytes(upstreamBody)
-	if !root.IsObject() || root.Get("type").String() != "message" || strings.TrimSpace(root.Get("id").String()) == "" {
+	messageType := root.Get("type")
+	messageID := root.Get("id")
+	if !root.IsObject() || messageType.Type != gjson.String || messageType.String() != "message" || messageID.Type != gjson.String || strings.TrimSpace(messageID.String()) == "" {
 		return
 	}
 	requestID, errRequestID := claudePrevRequestIDHeader(headers)

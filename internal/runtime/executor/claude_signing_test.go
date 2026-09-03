@@ -104,6 +104,26 @@ func TestFinalizeAnthropicMessagesBodyCCH_InsertsMissingPlaceholder(t *testing.T
 	}
 }
 
+func TestFinalizeAnthropicMessagesBodyCCH_PreservesStringBillingShape(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"claude-opus-5","system":"  x-anthropic-billing-header: cc_version=2.1.241.test; cc_entrypoint=sdk-cli; cc_prev_req=req_previous;  ","messages":[]}`)
+	signed, err := finalizeAnthropicMessagesBodyCCH(body, "x-anthropic-billing-header: cc_version=2.1.241.fallback; cc_entrypoint=sdk-cli; cch=00000;")
+	if err != nil {
+		t.Fatalf("finalizeAnthropicMessagesBodyCCH() error = %v", err)
+	}
+	system := gjson.GetBytes(signed, "system")
+	if system.Type != gjson.String {
+		t.Fatalf("system type = %v, want string; body=%s", system.Type, signed)
+	}
+	if billing := system.String(); !strings.Contains(billing, "cc_prev_req=req_previous;") || strings.Contains(billing, "cch=00000;") {
+		t.Fatalf("signed billing = %q, want caller value and finalized CCH", billing)
+	}
+	if _, ok := claudeBillingCCHDigitsOffset(signed); !ok {
+		t.Fatalf("string billing CCH not found: %s", signed)
+	}
+}
+
 func TestFinalizeAnthropicMessagesBodyCCH_AddsMissingBillingBlock(t *testing.T) {
 	t.Parallel()
 
