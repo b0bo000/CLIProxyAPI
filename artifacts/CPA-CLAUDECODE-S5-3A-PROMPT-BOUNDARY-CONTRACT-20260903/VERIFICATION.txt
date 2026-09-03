@@ -1,0 +1,41 @@
+S5-3A PROMPT-BOUNDARY CONTRACT VERIFICATION
+Date: 2026-09-03 (America/Los_Angeles)
+Changed branch/field: feat/s3-resolved-profile / typed adapter prompt-boundary contract for B-12 cc_prompt_id
+Baseline commit: 704f980a3eec8dc9bdf136c4ba376f8083be904f
+
+ARTIFACTS
+MODIFIED_FILE: artifacts/CPA-CLAUDECODE-S5-3A-PROMPT-BOUNDARY-CONTRACT-20260903/MODIFIED_FILE.md
+DIFF_FILE: artifacts/CPA-CLAUDECODE-S5-3A-PROMPT-BOUNDARY-CONTRACT-20260903/DIFF_FILE.md
+VERIFICATION: artifacts/CPA-CLAUDECODE-S5-3A-PROMPT-BOUNDARY-CONTRACT-20260903/VERIFICATION.txt
+ROLLBACK: artifacts/CPA-CLAUDECODE-S5-3A-PROMPT-BOUNDARY-CONTRACT-20260903/ROLLBACK.sh
+
+BASELINE
+Command: powershell -NoProfile -ExecutionPolicy Bypass -File STATIC-CONTRACT-TEST.ps1 -Mode BASELINE -Root C:\Users\Administrator\gpt-5.6-instruct\worktrees\cpa-s5-3a-rollback-test
+Input: detached worktree at 704f980a3eec8dc9bdf136c4ba376f8083be904f
+Literal output: CONTRACT_STATIC_OK MODE=BASELINE CONTEXT_API=0 RESOLVER=0 EXECUTOR_GUARDS=0 PROMPT_GENERATOR=0
+Exit status: 0
+
+MODIFIED
+Command: powershell -NoProfile -ExecutionPolicy Bypass -File STATIC-CONTRACT-TEST.ps1 -Mode MODIFIED -Root .
+Input: live worktree with S5-3A staged source and tests
+Literal output: CONTRACT_STATIC_OK MODE=MODIFIED CONTEXT_API=1 RESOLVER=1 EXECUTOR_GUARDS=2 PROMPT_GENERATOR=0
+Exit status: 0
+
+ROLLBACK
+Command: "C:\Program Files\Git\bin\bash.exe" ROLLBACK.sh /c/Users/Administrator/gpt-5.6-instruct/worktrees/cpa-s5-3a-rollback-test
+Input: independent copy after applying SOURCE-DIFF.patch
+Literal output: ROLLBACK_OK TARGET=/c/Users/Administrator/gpt-5.6-instruct/worktrees/cpa-s5-3a-rollback-test
+Exit status: 0
+Restored behavior/status: restored static baseline check returned CONTRACT_STATIC_OK MODE=BASELINE CONTEXT_API=0 RESOLVER=0 EXECUTOR_GUARDS=0 PROMPT_GENERATOR=0; git diff --exit-code returned 0; worktree status was clean; HEAD was 704f980a3eec8dc9bdf136c4ba376f8083be904f.
+
+ADDITIONAL CHECKS
+git apply --check --whitespace=error-all SOURCE-DIFF.patch: exit 0
+git diff --check (live tree): exit 0
+gofmt -d on all changed Go files (live tree): exit 0
+Sensitive scan (OAuth/email/bearer patterns in source/artifact text): 0 hits
+Source-only patch SHA-256: 83ac07373b68e9c1cca7f02c1c2365dcf49f960698d77f613a901c9637cc9c2a
+SHA256SUMS manifest: 13 entries, MANIFEST_MISMATCHES=0
+Local Go test/build: not run; repository policy prohibits compilation-heavy workstation commands. Remote host 12.17.211.81 reported GO_AVAILABLE=0.
+
+RESULT
+The contract is implemented and fail-closed. No prompt ID was generated or put on the wire. S5-3-B lifecycle state/generation remains unopened. Release remains NOT STRICTLY EQUIVALENT.
