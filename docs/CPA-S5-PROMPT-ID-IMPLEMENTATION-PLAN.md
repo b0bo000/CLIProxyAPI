@@ -142,3 +142,35 @@ CCH, UA, billing entrypoint, session/request/device IDs, `cc_prev_req`,
 diagnostics, TLS, transport/cache, OAuth, proxy, retry policy or public
 configuration. It does not claim that a matching prompt ID proves strict
 client equivalence.
+
+## S5-2 execution log (2026-09-03)
+
+S5-2 is complete as a documentation-only trusted-boundary audit. The detailed
+card is `docs/change-cards/CC-20260903-S5-2-PROMPT-BOUNDARY.md`; the redacted
+ledger and verification package are under
+`artifacts/CPA-CLAUDECODE-S5-2-PROMPT-BOUNDARY-AUDIT-20260903/`.
+
+The official A inventory has 194 requests, with 162/162 strict successful SDK
+requests carrying `cc_prompt_id`. A same-process three-prompt task has three
+distinct values, each stable across its tool loop; parent/subagent rows retain
+the same value. Prompt IDs are absent on title, count_tokens and compact rows. Same-session
+process-restart resume changes the observed prompt hash, so resume inheritance
+is unresolved. Failed, cancelled and incomplete rows are transition evidence,
+not successful state commits.
+
+The retained B native corpus has 60 sanitized records and zero native prompt
+IDs. A separate scan of 240 B gap body-stage files found zero `cc_prompt_id`
+and zero local `promptId` occurrences. A local CLI JSONL `promptId` is not the
+native billing field. The precise conclusion is that the B incoming shape lacks
+the field and CPA has no verified lifecycle model to restore it; this does not
+prove CPA deleted a caller field.
+
+S5-2 defines `absent`, `continue(existing)`, `new(boundary)` and fail-closed
+`ambiguous`. Session/request/message IDs, PID, timing, body length/hash and
+per-request randomness are explicitly rejected as boundary substitutes. No
+missing-ID generator is authorized. S5-3 remains blocked pending a trusted
+caller boundary or adapter contract and parity tests for fresh prompts,
+tool-loops, retries, cancellation recovery, restart/resume, subagents and
+parallel requests. B-12 remains `CONFIRMED_DIFFERENCE`, G-03 remains
+`CAPTURED_B_PARTIAL`, G-04 remains `CAPTURED_B_BOUNDARY_LIMITED`, and release
+remains `NOT STRICTLY EQUIVALENT`.
