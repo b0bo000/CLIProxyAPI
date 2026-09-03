@@ -112,10 +112,14 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	}
 	if contextManagementState.eligible {
 		body, contextManagementState.automaticallyInjected = injectClaudeCodeContextManagement(body)
-		if fp.InjectDiagnostics {
-			body, diagnosticsState = injectClaudeDiagnostics(body, auth, claudeSessionID)
-		}
 	}
+	// Diagnostics has an independent eligibility boundary. Native Claude Code
+	// requests are not cloaked, so tying this call to context-management
+	// eligibility would silently omit the managed diagnostics chain from the
+	// confirmed-native wire path.
+	body, diagnosticsState = beginClaudeDiagnostics(
+		body, auth, claudeSessionID, baseURL, softwareProfile, fp.InjectDiagnostics,
+	)
 
 	requestedModel := helps.PayloadRequestedModel(opts, req.Model)
 	requestPath := helps.PayloadRequestPath(opts)

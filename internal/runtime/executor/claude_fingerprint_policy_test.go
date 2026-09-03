@@ -554,7 +554,7 @@ func TestClaudeExecutor_OfficialAPIKeyDefaultPreservesCallerCCH(t *testing.T) {
 	}
 }
 
-func TestClaudeExecutor_OfficialAPIKeyClaudeCodeCLIFingerprintIncludesDiagnostics(t *testing.T) {
+func TestClaudeExecutor_OfficialAPIKeyClaudeCodeCLIFingerprintDoesNotInventDiagnostics(t *testing.T) {
 	var seenBody []byte
 	var seenHeaders http.Header
 	transport := claudeFingerprintRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -593,8 +593,8 @@ func TestClaudeExecutor_OfficialAPIKeyClaudeCodeCLIFingerprintIncludesDiagnostic
 	if errExecute != nil {
 		t.Fatalf("Execute() error = %v", errExecute)
 	}
-	if diagnostics := gjson.GetBytes(seenBody, "diagnostics"); !diagnostics.IsObject() {
-		t.Fatalf("diagnostics = %s, want object after fingerprint-profile opt-in", diagnostics.Raw)
+	if diagnostics := gjson.GetBytes(seenBody, "diagnostics"); diagnostics.Exists() {
+		t.Fatalf("diagnostics = %s, configured-but-unconfirmed profile must not invent native state", diagnostics.Raw)
 	}
 	// api.anthropic.com is the one API-key origin where native emits cch, so the
 	// opt-in must produce a finalized signature here.
@@ -613,8 +613,8 @@ func TestClaudeExecutor_OfficialAPIKeyClaudeCodeCLIFingerprintIncludesDiagnostic
 	if !strings.Contains(betas, "oauth-2025-04-20") {
 		t.Fatalf("Anthropic-Beta = %q, want oauth beta after fingerprint-profile opt-in", betas)
 	}
-	if !strings.Contains(betas, claudeCacheDiagnosisBeta) {
-		t.Fatalf("Anthropic-Beta = %q, want %q", betas, claudeCacheDiagnosisBeta)
+	if strings.Contains(betas, claudeCacheDiagnosisBeta) {
+		t.Fatalf("Anthropic-Beta = %q, configured-but-unconfirmed profile must not claim diagnostics", betas)
 	}
 	if got := claudeFingerprintHeaderValue(seenHeaders, "x-api-key"); got != "key-official-fp" {
 		t.Fatalf("x-api-key = %q, want API key auth", got)
