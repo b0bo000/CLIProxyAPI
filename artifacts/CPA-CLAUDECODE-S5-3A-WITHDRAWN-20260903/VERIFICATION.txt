@@ -1,0 +1,25 @@
+S5-3A WITHDRAWN ARCHIVE VERIFICATION
+Date: 2026-09-03
+
+BASELINE command:
+git diff --exit-code 704f980a -- internal cmd sdk config go.mod go.sum .github
+BASELINE literal result:
+0
+BASELINE exit status: 0
+
+MODIFIED command:
+git status --short --untracked-files=all -- artifacts/CPA-CLAUDECODE-S5-3A-PROMPT-BOUNDARY-CONTRACT-20260903 internal/runtime/executor/claude_executor_execute.go internal/runtime/executor/claude_executor_stream.go internal/runtime/executor/helps/claude_prompt_state.go sdk/cliproxy/executor/prompt_boundary.go
+MODIFIED literal result:
+No S5-3A implementation paths listed; only the withdrawn archive is present.
+MODIFIED exit status: 0
+
+ROLLBACK command:
+"C:\\Program Files\\Git\\bin\\bash.exe" artifacts/CPA-CLAUDECODE-S5-3A-WITHDRAWN-20260903/ROLLBACK.sh
+ROLLBACK literal result:
+WITHDRAWN_ARCHIVE_OK=1
+ROLLBACK exit status: 0
+
+RESTORED behavior/status:
+The active source scope is restored to the S5-2 baseline behavior at
+`704f980a`; S5-3A is withdrawn and S5-3 remains BLOCKED. No OAuth, e-mail,
+proxy credential, or raw private request data is included.
