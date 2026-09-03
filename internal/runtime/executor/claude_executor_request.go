@@ -474,6 +474,9 @@ func insertClaudePrevRequestBillingText(text, previousRequestID string) (updated
 	if !strings.HasPrefix(trimmed, claudeBillingHeaderPrefix) {
 		return text, false, nil
 	}
+	if _, _, errPromptID := helps.ParseClaudePromptIDBillingText(trimmed); errPromptID != nil {
+		return text, false, errPromptID
+	}
 
 	// Work on the trimmed view but splice into the original string so caller
 	// whitespace remains byte-for-byte intact around the edited billing value.
