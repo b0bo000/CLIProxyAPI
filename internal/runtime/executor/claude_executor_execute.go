@@ -105,19 +105,42 @@ func claudePrevRequestCredentialIdentity(auth *cliproxyauth.Auth, apiKey string)
 		return ""
 	}
 	recordIdentity := strings.TrimSpace(helps.ClaudeCLIAuthIdentitySeed(auth))
-	accountUUID := strings.TrimSpace(helps.ClaudeCredentialAccountUUID(auth))
 	if recordIdentity == "" {
 		return ""
 	}
-	if accountUUID != "" {
+	apiKey = strings.TrimSpace(apiKey)
+
+	// AuthKind is authoritative when present. An API-key record can retain
+	// stale OAuth account metadata after a hot swap, so account_uuid must not
+	// be consulted before the credential kind is known. API keys use the
+	// current key digest; OAuth uses the account UUID and survives token
+	// rotation.
+	switch auth.AuthKind() {
+	case cliproxyauth.AuthKindAPIKey:
+		if apiKey == "" {
+			return ""
+		}
+		digest := sha256.Sum256([]byte(apiKey))
+		return fmt.Sprintf("%s\x00api-key:%x", recordIdentity, digest)
+	case cliproxyauth.AuthKindOAuth:
+		accountUUID := strings.TrimSpace(helps.ClaudeCredentialAccountUUID(auth))
+		if accountUUID == "" {
+			return ""
+		}
 		return recordIdentity + "\x00account:" + accountUUID
 	}
-	apiKey = strings.TrimSpace(apiKey)
-	if apiKey == "" || isClaudeOAuthToken(apiKey) {
-		return ""
+
+	// Legacy records may not carry auth_kind. The OAuth token shape is the only
+	// available discriminator in that case; unknown credential shapes do not
+	// create a chain.
+	if isClaudeOAuthToken(apiKey) {
+		accountUUID := strings.TrimSpace(helps.ClaudeCredentialAccountUUID(auth))
+		if accountUUID == "" {
+			return ""
+		}
+		return recordIdentity + "\x00account:" + accountUUID
 	}
-	digest := sha256.Sum256([]byte(apiKey))
-	return fmt.Sprintf("%s\x00api-key:%x", recordIdentity, digest)
+	return ""
 }
 
 func commitClaudePrevRequestExecute(ctx context.Context, state claudePrevRequestExecuteState, headers http.Header, upstreamBody, translatedBody []byte) {

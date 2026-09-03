@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/andybalholm/brotli"
 	"github.com/google/uuid"
@@ -454,11 +453,16 @@ func validateClaudePrevRequestID(requestID string) error {
 	if len(requestID) > 128 {
 		return fmt.Errorf("insert Claude cc_prev_req: request ID is too long")
 	}
-	if strings.TrimSpace(requestID) != requestID || strings.ContainsAny(requestID, ";=\r\n") {
+	// Anthropic's observed request-id wire shape is req_ followed by printable
+	// token characters. Keep underscore compatibility for synthetic/legacy
+	// IDs, but reject comma/list syntax and all other delimiters so a combined
+	// HTTP header value cannot poison the next cc_prev_req.
+	if len(requestID) <= len("req_") || !strings.HasPrefix(requestID, "req_") {
 		return fmt.Errorf("insert Claude cc_prev_req: invalid request ID")
 	}
-	for _, r := range requestID {
-		if r < 0x21 || r > 0x7e || unicode.IsSpace(r) || unicode.IsControl(r) {
+	for i := len("req_"); i < len(requestID); i++ {
+		value := requestID[i]
+		if !(value >= 'A' && value <= 'Z') && !(value >= 'a' && value <= 'z') && !(value >= '0' && value <= '9') && value != '_' {
 			return fmt.Errorf("insert Claude cc_prev_req: invalid request ID")
 		}
 	}

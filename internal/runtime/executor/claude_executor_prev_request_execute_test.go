@@ -341,7 +341,10 @@ func TestClaudeExecutorPrevRequestIDHeaderRequiresOneBoundedASCIIValue(t *testin
 		{name: "duplicate values", headers: http.Header{"Request-Id": {"req_first", "req_second"}}, wantErr: true},
 		{name: "duplicate case variants", headers: http.Header{"Request-Id": {"req_first"}, "request-id": {"req_second"}}, wantErr: true},
 		{name: "non ascii", headers: http.Header{"Request-Id": {"req-é"}}, wantErr: true},
-		{name: "too long", headers: http.Header{"Request-Id": {strings.Repeat("r", 129)}}, wantErr: true},
+		{name: "combined list value", headers: http.Header{"Request-Id": {"req_first, req_second"}}, wantErr: true},
+		{name: "suffix punctuation", headers: http.Header{"Request-Id": {"req_first-second"}}, wantErr: true},
+		{name: "missing req prefix", headers: http.Header{"Request-Id": {"id_first"}}, wantErr: true},
+		{name: "too long", headers: http.Header{"Request-Id": {"req_" + strings.Repeat("r", 125)}}, wantErr: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got, errHeader := claudePrevRequestIDHeader(test.headers)
@@ -408,6 +411,46 @@ func TestClaudePrevRequestCredentialIdentitySeparatesAccountHotSwap(t *testing.T
 	second := claudePrevRequestCredentialIdentity(auth, "sk-ant-oat-synthetic")
 	if first == "" || second == "" || first == second {
 		t.Fatalf("credential identities = %q and %q, want distinct non-empty values", first, second)
+	}
+}
+
+func TestClaudePrevRequestCredentialIdentityAPIKeyIgnoresStaleAccountUUID(t *testing.T) {
+	auth := &cliproxyauth.Auth{
+		ID:         "stable-api-key-record",
+		Attributes: map[string]string{cliproxyauth.AttributeAPIKey: "key-a"},
+		Metadata:   map[string]any{"account_uuid": "stale-oauth-account"},
+	}
+	first := claudePrevRequestCredentialIdentity(auth, "key-a")
+	auth.Metadata["account_uuid"] = "another-stale-account"
+	second := claudePrevRequestCredentialIdentity(auth, "key-a")
+	if first == "" || second == "" || first != second {
+		t.Fatalf("API-key identities = %q and %q, want same key digest despite stale account UUID", first, second)
+	}
+}
+
+func TestClaudePrevRequestCredentialIdentityAPIKeyHotSwapStartsNewChain(t *testing.T) {
+	auth := &cliproxyauth.Auth{
+		ID:         "stable-api-key-record",
+		Attributes: map[string]string{cliproxyauth.AttributeAPIKey: "key-a"},
+		Metadata:   map[string]any{"account_uuid": "stale-oauth-account"},
+	}
+	first := claudePrevRequestCredentialIdentity(auth, "key-a")
+	second := claudePrevRequestCredentialIdentity(auth, "key-b")
+	if first == "" || second == "" || first == second {
+		t.Fatalf("API-key identities = %q and %q, want distinct key digests", first, second)
+	}
+}
+
+func TestClaudePrevRequestCredentialIdentityOAuthTokenRotationKeepsAccountChain(t *testing.T) {
+	auth := &cliproxyauth.Auth{
+		ID:         "stable-oauth-record",
+		Attributes: map[string]string{cliproxyauth.AttributeAuthKind: cliproxyauth.AuthKindOAuth},
+		Metadata:   map[string]any{"account_uuid": "oauth-account"},
+	}
+	first := claudePrevRequestCredentialIdentity(auth, "sk-ant-oat-token-a")
+	second := claudePrevRequestCredentialIdentity(auth, "sk-ant-oat-token-b")
+	if first == "" || second == "" || first != second {
+		t.Fatalf("OAuth identities = %q and %q, want same account chain across token rotation", first, second)
 	}
 }
 
