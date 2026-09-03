@@ -185,6 +185,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		claudePrevRequestScope,
 		baseURL,
 		softwareProfile,
+		claudePrevRequestPolicyEnabled(fp, confirmedClaudeCode),
 	)
 	if err != nil {
 		return nil, err

@@ -151,6 +151,56 @@ func TestClaudeExecutorPrevRequestExecuteAdvancesOnlyAfterSuccess(t *testing.T) 
 	}
 }
 
+func TestClaudeExecutorPrevRequestPolicyGateIsIndependentFromDiagnostics(t *testing.T) {
+	_, auth, request, _ := claudePrevRequestFixture(t, "s4a5-policy-"+uuid.NewString(), uuid.NewString())
+	profile := helps.ResolvedClaudeSoftwareProfile{Confirmed: true, Provenance: helps.ClaudeSoftwareProfileDetected}
+	policy := resolveClaudeFingerprintPolicy(nil, auth, auth.Attributes["api_key"])
+	if !policy.InjectDiagnostics || !policy.InjectPrevRequest {
+		t.Fatalf("OAuth policy = %+v, want both independent policy results enabled", policy)
+	}
+
+	// Simulate diagnostics remaining enabled while the prev-request policy is
+	// disabled. No probe, state generation, or body rewrite is allowed.
+	updated, state, errPrepare := beginClaudePrevRequestExecute(
+		request.Payload,
+		auth,
+		auth.Attributes["api_key"],
+		"claude:session:agent:main",
+		"https://api.anthropic.com",
+		profile,
+		false,
+		false,
+	)
+	if errPrepare != nil {
+		t.Fatalf("disabled begin() error = %v", errPrepare)
+	}
+	if !bytes.Equal(updated, request.Payload) {
+		t.Fatalf("disabled policy rewrote body: %s", updated)
+	}
+	if state != (claudePrevRequestState{}) {
+		t.Fatalf("disabled policy allocated state: %+v", state)
+	}
+
+	// Caller-owned continuity remains untouched even when the gate is disabled.
+	callerBody := bytes.Replace(request.Payload, []byte(" cch=00000;"), []byte(" cch=00000; cc_prev_req=req_caller_owned;"), 1)
+	updated, state, errPrepare = beginClaudePrevRequestExecute(
+		callerBody,
+		auth,
+		auth.Attributes["api_key"],
+		"claude:session:agent:main",
+		"https://api.anthropic.com",
+		profile,
+		false,
+		false,
+	)
+	if errPrepare != nil {
+		t.Fatalf("disabled caller-owned begin() error = %v", errPrepare)
+	}
+	if !bytes.Equal(updated, callerBody) || state != (claudePrevRequestState{}) {
+		t.Fatalf("disabled policy changed caller-owned request or state: body=%s state=%+v", updated, state)
+	}
+}
+
 func TestClaudeExecutorPrevRequestExecuteFailuresDoNotAdvance(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -384,7 +434,7 @@ func TestClaudeExecutorPrevRequestMalformedBillingIsRequestScoped(t *testing.T) 
 	_, auth, request, _ := claudePrevRequestFixture(t, "s4a3-malformed-"+uuid.NewString(), uuid.NewString())
 	request.Payload = bytes.Replace(request.Payload, []byte("cc_entrypoint=sdk-cli"), []byte("cc_entrypoint"), 1)
 	profile := helps.ResolvedClaudeSoftwareProfile{Confirmed: true, Provenance: helps.ClaudeSoftwareProfileDetected}
-	_, _, errPrepare := beginClaudePrevRequestExecute(request.Payload, auth, auth.Attributes["api_key"], "claude:session:agent:main", "https://api.anthropic.com", profile, false)
+	_, _, errPrepare := beginClaudePrevRequestExecute(request.Payload, auth, auth.Attributes["api_key"], "claude:session:agent:main", "https://api.anthropic.com", profile, false, true)
 	if errPrepare == nil {
 		t.Fatal("malformed billing error = nil")
 	}
@@ -491,7 +541,7 @@ func TestClaudeExecutorPrevRequestExecuteEligibilityControls(t *testing.T) {
 		{name: "missing scope excluded", profile: profile, baseURL: "https://api.anthropic.com"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			updated, state, errPrepare := beginClaudePrevRequestExecute(body, auth, "sk-ant-oat-s4a3", test.scope, test.baseURL, test.profile, test.stream)
+			updated, state, errPrepare := beginClaudePrevRequestExecute(body, auth, "sk-ant-oat-s4a3", test.scope, test.baseURL, test.profile, test.stream, true)
 			if errPrepare != nil {
 				t.Fatalf("begin() error = %v", errPrepare)
 			}

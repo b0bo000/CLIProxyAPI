@@ -68,11 +68,14 @@ func beginClaudePrevRequestExecute(
 	sessionScope, baseURL string,
 	softwareProfile helps.ResolvedClaudeSoftwareProfile,
 	upstreamStream bool,
+	injectPrevRequest bool,
 ) ([]byte, claudePrevRequestState, error) {
-	if upstreamStream {
+	// The policy gate is intentionally separate from diagnostics. A disabled
+	// prev-request policy must not allocate or advance continuity state.
+	if upstreamStream || !injectPrevRequest {
 		return body, claudePrevRequestState{}, nil
 	}
-	return beginClaudePrevRequest(body, auth, apiKey, sessionScope, baseURL, softwareProfile)
+	return beginClaudePrevRequest(body, auth, apiKey, sessionScope, baseURL, softwareProfile, injectPrevRequest)
 }
 
 func beginClaudePrevRequest(
@@ -81,8 +84,9 @@ func beginClaudePrevRequest(
 	apiKey string,
 	sessionScope, baseURL string,
 	softwareProfile helps.ResolvedClaudeSoftwareProfile,
+	injectPrevRequest bool,
 ) ([]byte, claudePrevRequestState, error) {
-	if !isAnthropicUpstreamBase(baseURL) || !softwareProfile.Confirmed || softwareProfile.IsHelperProfile() {
+	if !claudePrevRequestEligible(injectPrevRequest, baseURL, softwareProfile) {
 		return body, claudePrevRequestState{}, nil
 	}
 	credentialIdentity := claudePrevRequestCredentialIdentity(auth, apiKey)
@@ -111,6 +115,18 @@ func beginClaudePrevRequest(
 		return nil, claudePrevRequestState{}, newClaudePrevRequestRequestError(errInsert)
 	}
 	return updated, state, nil
+}
+
+// claudePrevRequestEligible is deliberately independent from diagnostics
+// eligibility. Confirmed native requests and the configured real Claude Code
+// CLI wire profile may carry the continuity field; helper/title requests,
+// unknown callers, count_tokens, and non-Anthropic gateways cannot create or
+// advance this state.
+func claudePrevRequestEligible(injectPrevRequest bool, baseURL string, softwareProfile helps.ResolvedClaudeSoftwareProfile) bool {
+	if !injectPrevRequest || !isAnthropicUpstreamBase(baseURL) || softwareProfile.IsHelperProfile() {
+		return false
+	}
+	return softwareProfile.Confirmed || softwareProfile.Provenance == helps.ClaudeSoftwareProfileConfiguredCLI
 }
 
 func claudePrevRequestCredentialIdentity(auth *cliproxyauth.Auth, apiKey string) string {
@@ -384,6 +400,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		baseURL,
 		softwareProfile,
 		upstreamStream,
+		claudePrevRequestPolicyEnabled(fp, confirmedClaudeCode),
 	)
 	if err != nil {
 		return resp, err

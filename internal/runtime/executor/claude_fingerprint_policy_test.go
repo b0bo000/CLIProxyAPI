@@ -187,8 +187,51 @@ func TestResolveClaudeFingerprintPolicy(t *testing.T) {
 			if fp.InjectDiagnostics != tt.wantDiagnostics {
 				t.Fatalf("InjectDiagnostics = %v, want %v", fp.InjectDiagnostics, tt.wantDiagnostics)
 			}
+			if fp.InjectPrevRequest != tt.wantProfileOAuth {
+				t.Fatalf("InjectPrevRequest = %v, want %v", fp.InjectPrevRequest, tt.wantProfileOAuth)
+			}
 			if fp.OAuthCancellation != tt.wantCancellation {
 				t.Fatalf("OAuthCancellation = %v, want %v", fp.OAuthCancellation, tt.wantCancellation)
+			}
+		})
+	}
+}
+
+func TestClaudePrevRequestPolicyIsIndependentFromDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name            string
+		policy          claudeFingerprintPolicy
+		confirmedNative bool
+		wantEnabled     bool
+	}{
+		{
+			name:        "diagnostics on prev request off",
+			policy:      claudeFingerprintPolicy{InjectDiagnostics: true},
+			wantEnabled: false,
+		},
+		{
+			name:        "diagnostics off prev request on",
+			policy:      claudeFingerprintPolicy{InjectPrevRequest: true},
+			wantEnabled: true,
+		},
+		{
+			name:            "confirmed native enables continuity",
+			policy:          claudeFingerprintPolicy{InjectDiagnostics: false},
+			confirmedNative: true,
+			wantEnabled:     true,
+		},
+		{
+			name:        "both disabled",
+			policy:      claudeFingerprintPolicy{},
+			wantEnabled: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := claudePrevRequestPolicyEnabled(tc.policy, tc.confirmedNative); got != tc.wantEnabled {
+				t.Fatalf("claudePrevRequestPolicyEnabled(%+v, %t) = %t, want %t", tc.policy, tc.confirmedNative, got, tc.wantEnabled)
 			}
 		})
 	}
