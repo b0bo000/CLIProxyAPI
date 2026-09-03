@@ -204,3 +204,6 @@ S5-3-B remains unopened: a trusted adapter must still supply real lifecycle
 events, and only a separately approved step may add lifecycle state or decide
 whether a missing prompt ID can ever be generated. Release remains
 `NOT STRICTLY EQUIVALENT`.
+
+Implementation commits: `b6493c9d` (S5-3-A contract and tests) and `a8c51445`
+(executable rollback artifact).
