@@ -27,14 +27,15 @@ Allowed source files:
 Supporting correctness fixes required by the A.3 commit contract:
 
 - `internal/runtime/executor/claude_executor_request.go`: bound and restrict
-  response `request-id` values to printable ASCII before they can enter the
-  billing field; the observed official value is 28 bytes and the parser limit
-  is 128 bytes.
+  response `request-id` values to the observed `req_` plus ASCII token grammar
+  before they can enter the billing field; the parser limit is 128 bytes.
 - `internal/runtime/executor/helps/claude_prev_request.go` and its test: reject
   a direct late commit after the bounded state entry has expired.
 
 The test may use the existing executor test helpers. No production file other
-than `claude_executor_execute.go` may change in this step.
+than `claude_executor_execute.go` may change in this step. The follow-up
+identity fix makes `AuthKind` authoritative: API-key chains use the current key
+digest despite stale account metadata, while OAuth chains use account UUID.
 
 ## Eligibility
 
@@ -62,7 +63,8 @@ S4-A.5 will separately decide any broader policy and feature-switch behavior.
 6. A 2xx response is fully decoded and read.
 7. The response is valid JSON; tool-name restoration and final translation
    complete.
-8. A syntactically valid response `request-id` advances the generation.
+8. A response `request-id` matching `req_` followed by ASCII letters, digits or
+   underscore advances the generation.
 
 Transport errors, cancellation, non-2xx responses, decode/read failures,
 invalid JSON, conversion/restoration errors and missing or invalid request IDs
@@ -78,6 +80,8 @@ Synthetic executor tests must prove:
 - missing or invalid response `request-id` does not advance state;
 - caller-owned `cc_prev_req` is byte/value preserved and does not seed CPA state;
 - different credentials and sessions cannot consume each other's prior value;
+- API-key stale-account metadata and API-key A/B hot swaps remain isolated,
+  while OAuth token rotation remains continuous by account UUID;
 - helper/title and non-Anthropic requests remain ineligible.
 
 The change is falsified by any early commit, cross-scope value, caller-value
@@ -119,6 +123,10 @@ gate. It does not reuse `InjectDiagnostics` as an implicit substitute.
   `git revert --no-edit <S4-A.3-commit>`.
 - An independent-copy rollback must restore the pre-step hashes while the live
   worktree remains changed.
+
+Review-fix commit: `4dea2bb8` (after `ce9fab92`). The complete evidence,
+post-fix test outputs, SHA-256 manifest and executable rollback record are in
+`artifacts/CPA-CLAUDECODE-S4A3-EXECUTE-PREV-REQ-20260902`.
 
 ## Pre-Edit Gate
 
