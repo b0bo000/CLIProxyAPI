@@ -16,7 +16,37 @@ type claudeDiagnosticsRequestState struct {
 	sequence uint64
 }
 
+// beginClaudeDiagnostics applies the diagnostics policy at the request
+// boundary. Diagnostics is deliberately stricter than the generic CLI profile:
+// only a request whose native Claude Code signals were confirmed may create a
+// continuity generation. Configured-but-unconfirmed profiles must not invent a
+// native diagnostics chain, and caller-owned diagnostics remain untouched.
+func beginClaudeDiagnostics(
+	body []byte,
+	auth *cliproxyauth.Auth,
+	sessionID, baseURL string,
+	softwareProfile helps.ResolvedClaudeSoftwareProfile,
+	injectDiagnostics bool,
+) ([]byte, claudeDiagnosticsRequestState) {
+	if !claudeDiagnosticsEligible(injectDiagnostics, baseURL, softwareProfile) {
+		return body, claudeDiagnosticsRequestState{}
+	}
+	if gjson.GetBytes(body, "diagnostics").Exists() {
+		return body, claudeDiagnosticsRequestState{}
+	}
+	return injectClaudeDiagnostics(body, auth, sessionID)
+}
+
+func claudeDiagnosticsEligible(injectDiagnostics bool, baseURL string, softwareProfile helps.ResolvedClaudeSoftwareProfile) bool {
+	return injectDiagnostics && isAnthropicUpstreamBase(baseURL) && softwareProfile.Confirmed && !softwareProfile.IsHelperProfile()
+}
+
 func injectClaudeDiagnostics(body []byte, auth *cliproxyauth.Auth, sessionID string) ([]byte, claudeDiagnosticsRequestState) {
+	// A diagnostics object supplied by the caller owns its value and its state
+	// lifecycle. Never overwrite it or allocate a CPA continuity generation.
+	if gjson.GetBytes(body, "diagnostics").Exists() {
+		return body, claudeDiagnosticsRequestState{}
+	}
 	key, sequence, previousMessageID := helps.BeginClaudeDiagnostics(claudeDiagnosticsCredentialIdentity(auth), sessionID)
 	if key == "" {
 		return body, claudeDiagnosticsRequestState{}

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	claudeauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/claude"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v7/sdk/translator"
@@ -94,6 +95,55 @@ func TestClaudeExecutorDiagnosticsAdvancesAfterSuccessfulResponse(t *testing.T) 
 		if !strings.HasSuffix(betas, wantTrailer) {
 			t.Fatalf("turn %d Anthropic-Beta = %q, want native diagnostics trailer %q", turn+1, betas, wantTrailer)
 		}
+	}
+}
+
+func TestClaudeDiagnosticsEligibilityRequiresConfirmedNativeAnthropicRequest(t *testing.T) {
+	confirmed := helps.ResolvedClaudeSoftwareProfile{Confirmed: true, Provenance: helps.ClaudeSoftwareProfileDetected}
+	configured := helps.ResolvedClaudeSoftwareProfile{Confirmed: false, Provenance: helps.ClaudeSoftwareProfileConfiguredCLI}
+	for _, tc := range []struct {
+		name    string
+		inject  bool
+		baseURL string
+		profile helps.ResolvedClaudeSoftwareProfile
+		want    bool
+	}{
+		{name: "confirmed native Anthropic", inject: true, baseURL: "https://api.anthropic.com", profile: confirmed, want: true},
+		{name: "configured but unconfirmed", inject: true, baseURL: "https://api.anthropic.com", profile: configured},
+		{name: "custom upstream", inject: true, baseURL: "https://gateway.example", profile: confirmed},
+		{name: "policy disabled", inject: false, baseURL: "https://api.anthropic.com", profile: confirmed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := claudeDiagnosticsEligible(tc.inject, tc.baseURL, tc.profile); got != tc.want {
+				t.Fatalf("claudeDiagnosticsEligible() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBeginClaudeDiagnosticsPreservesCallerOwnedValueWithoutState(t *testing.T) {
+	auth := &cliproxyauth.Auth{ID: "caller-owned-diagnostics"}
+	profile := helps.ResolvedClaudeSoftwareProfile{Confirmed: true, Provenance: helps.ClaudeSoftwareProfileDetected}
+	body := []byte(`{"diagnostics":{"previous_message_id":"caller_value"},"messages":[]}`)
+	updated, state := beginClaudeDiagnostics(body, auth, "session-caller-owned", "https://api.anthropic.com", profile, true)
+	if !bytes.Equal(updated, body) {
+		t.Fatalf("caller-owned diagnostics body changed: got %s want %s", updated, body)
+	}
+	if state != (claudeDiagnosticsRequestState{}) {
+		t.Fatalf("caller-owned diagnostics allocated state: %+v", state)
+	}
+}
+
+func TestBeginClaudeDiagnosticsDoesNotCreateStateForUnconfirmedProfile(t *testing.T) {
+	auth := &cliproxyauth.Auth{ID: "unconfirmed-diagnostics"}
+	profile := helps.ResolvedClaudeSoftwareProfile{Provenance: helps.ClaudeSoftwareProfileConfiguredCLI}
+	body := []byte(`{"messages":[]}`)
+	updated, state := beginClaudeDiagnostics(body, auth, "session-unconfirmed", "https://api.anthropic.com", profile, true)
+	if !bytes.Equal(updated, body) {
+		t.Fatalf("unconfirmed diagnostics body changed: got %s want %s", updated, body)
+	}
+	if state != (claudeDiagnosticsRequestState{}) {
+		t.Fatalf("unconfirmed profile allocated state: %+v", state)
 	}
 }
 
