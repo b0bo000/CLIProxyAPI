@@ -1,0 +1,275 @@
+2026-09-04T05:13:37.1710251Z Current runner version: '2.337.0'
+2026-09-04T05:13:37.1731967Z ##[group]Runner Image Provisioner
+2026-09-04T05:13:37.1732765Z Hosted Compute Agent
+2026-09-04T05:13:37.1733231Z Version: 20260828.587
+2026-09-04T05:13:37.1733793Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+2026-09-04T05:13:37.1734403Z Build Date: 2026-08-28T16:44:25Z
+2026-09-04T05:13:37.1734966Z Worker ID: {1661c4dd-b856-4684-87f6-5aa338e31868}
+2026-09-04T05:13:37.1735586Z Azure Region: centralus
+2026-09-04T05:13:37.1736242Z ##[endgroup]
+2026-09-04T05:13:37.1737472Z ##[group]Operating System
+2026-09-04T05:13:37.1737986Z Ubuntu
+2026-09-04T05:13:37.1738413Z 24.04.4
+2026-09-04T05:13:37.1738948Z LTS
+2026-09-04T05:13:37.1739387Z ##[endgroup]
+2026-09-04T05:13:37.1739860Z ##[group]Runner Image
+2026-09-04T05:13:37.1740353Z Image: ubuntu-24.04
+2026-09-04T05:13:37.1740833Z Version: 20260831.293.1
+2026-09-04T05:13:37.1741898Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260831.293/images/ubuntu/Ubuntu2404-Readme.md
+2026-09-04T05:13:37.1743159Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260831.293
+2026-09-04T05:13:37.1743955Z ##[endgroup]
+2026-09-04T05:13:37.1744917Z ##[group]GITHUB_TOKEN Permissions
+2026-09-04T05:13:37.1746850Z Contents: read
+2026-09-04T05:13:37.1747321Z Metadata: read
+2026-09-04T05:13:37.1747831Z ##[endgroup]
+2026-09-04T05:13:37.1749578Z Secret source: Actions
+2026-09-04T05:13:37.1750539Z Prepare workflow directory
+2026-09-04T05:13:37.2056572Z Prepare all required actions
+2026-09-04T05:13:37.2097317Z Getting action download info
+2026-09-04T05:13:37.4767019Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-09-04T05:13:37.7636297Z Download action repository 'actions/setup-go@v5' (SHA:40f1582b2485089dde7abd97c1529aa768e1baff)
+2026-09-04T05:13:38.3125038Z Complete job name: focused-tests
+2026-09-04T05:13:38.3727555Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-09-04T05:13:38.3735312Z ##[group]Run actions/checkout@v4
+2026-09-04T05:13:38.3736329Z with:
+2026-09-04T05:13:38.3736897Z   repository: b0bo000/CLIProxyAPI
+2026-09-04T05:13:38.3740989Z   token: ***
+2026-09-04T05:13:38.3741497Z   ssh-strict: true
+2026-09-04T05:13:38.3741990Z   ssh-user: git
+2026-09-04T05:13:38.3742531Z   persist-credentials: true
+2026-09-04T05:13:38.3743073Z   clean: true
+2026-09-04T05:13:38.3743565Z   sparse-checkout-cone-mode: true
+2026-09-04T05:13:38.3744165Z   fetch-depth: 1
+2026-09-04T05:13:38.3744656Z   fetch-tags: false
+2026-09-04T05:13:38.3745223Z   show-progress: true
+2026-09-04T05:13:38.3745734Z   lfs: false
+2026-09-04T05:13:38.3746434Z   submodules: false
+2026-09-04T05:13:38.3746968Z   set-safe-directory: true
+2026-09-04T05:13:38.3747511Z   allow-unsafe-pr-checkout: false
+2026-09-04T05:13:38.3748302Z ##[endgroup]
+2026-09-04T05:13:38.4629323Z Syncing repository: b0bo000/CLIProxyAPI
+2026-09-04T05:13:38.4632004Z ##[group]Getting Git version info
+2026-09-04T05:13:38.4633129Z Working directory is '/home/runner/work/CLIProxyAPI/CLIProxyAPI'
+2026-09-04T05:13:38.4634866Z [command]/usr/bin/git version
+2026-09-04T05:13:38.4721912Z git version 2.55.0
+2026-09-04T05:13:38.4737649Z ##[endgroup]
+2026-09-04T05:13:38.4750191Z Temporarily overriding HOME='/home/runner/work/_temp/edd3d604-1172-4495-97c1-6289856f8211' before making global git config changes
+2026-09-04T05:13:38.4752399Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-04T05:13:38.4754690Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CLIProxyAPI/CLIProxyAPI
+2026-09-04T05:13:38.4801704Z Deleting the contents of '/home/runner/work/CLIProxyAPI/CLIProxyAPI'
+2026-09-04T05:13:38.4809044Z ##[group]Initializing the repository
+2026-09-04T05:13:38.4810382Z [command]/usr/bin/git init /home/runner/work/CLIProxyAPI/CLIProxyAPI
+2026-09-04T05:13:38.4884049Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-09-04T05:13:38.4886030Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-09-04T05:13:38.4887700Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-09-04T05:13:38.4888709Z hint: call:
+2026-09-04T05:13:38.4889441Z hint:
+2026-09-04T05:13:38.4890143Z hint: 	git config --global init.defaultBranch <name>
+2026-09-04T05:13:38.4891162Z hint:
+2026-09-04T05:13:38.4891950Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-09-04T05:13:38.4893097Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-09-04T05:13:38.4894141Z hint:
+2026-09-04T05:13:38.4894707Z hint: 	git branch -m <name>
+2026-09-04T05:13:38.4895520Z hint:
+2026-09-04T05:13:38.4896589Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-09-04T05:13:38.4898256Z Initialized empty Git repository in /home/runner/work/CLIProxyAPI/CLIProxyAPI/.git/
+2026-09-04T05:13:38.4900882Z [command]/usr/bin/git remote add origin https://github.com/b0bo000/CLIProxyAPI
+2026-09-04T05:13:38.4941800Z ##[endgroup]
+2026-09-04T05:13:38.4942701Z ##[group]Disabling automatic garbage collection
+2026-09-04T05:13:38.4945330Z [command]/usr/bin/git config --local gc.auto 0
+2026-09-04T05:13:38.4971259Z ##[endgroup]
+2026-09-04T05:13:38.4972260Z ##[group]Setting up auth
+2026-09-04T05:13:38.4977530Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-04T05:13:38.5003882Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-04T05:13:38.6212486Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-04T05:13:38.6240318Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-04T05:13:38.6415815Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-04T05:13:38.6445478Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-04T05:13:38.6607920Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-09-04T05:13:38.6634137Z ##[endgroup]
+2026-09-04T05:13:38.6635350Z ##[group]Fetching the repository
+2026-09-04T05:13:38.6643702Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +9802b660e26f0fe4238190aaa6285dff118a019f:refs/remotes/pull/1/merge
+2026-09-04T05:13:40.1020020Z From https://github.com/b0bo000/CLIProxyAPI
+2026-09-04T05:13:40.1024469Z  * [new ref]         9802b660e26f0fe4238190aaa6285dff118a019f -> pull/1/merge
+2026-09-04T05:13:40.1026862Z ##[endgroup]
+2026-09-04T05:13:40.1027581Z ##[group]Determining the checkout info
+2026-09-04T05:13:40.1028304Z ##[endgroup]
+2026-09-04T05:13:40.1032356Z [command]/usr/bin/git sparse-checkout disable
+2026-09-04T05:13:40.1069922Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-09-04T05:13:40.1094986Z ##[group]Checking out the ref
+2026-09-04T05:13:40.1097859Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/1/merge
+2026-09-04T05:13:40.2158506Z Note: switching to 'refs/remotes/pull/1/merge'.
+2026-09-04T05:13:40.2159669Z
+2026-09-04T05:13:40.2160404Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-09-04T05:13:40.2161360Z changes and commit them, and you can discard any commits you make in this
+2026-09-04T05:13:40.2162189Z state without impacting any branches by switching back to a branch.
+2026-09-04T05:13:40.2162742Z
+2026-09-04T05:13:40.2163116Z If you want to create a new branch to retain commits you create, you may
+2026-09-04T05:13:40.2164201Z do so (now or later) by using -c with the switch command. Example:
+2026-09-04T05:13:40.2164668Z
+2026-09-04T05:13:40.2164925Z   git switch -c <new-branch-name>
+2026-09-04T05:13:40.2165217Z
+2026-09-04T05:13:40.2165462Z Or undo this operation with:
+2026-09-04T05:13:40.2165714Z
+2026-09-04T05:13:40.2165946Z   git switch -
+2026-09-04T05:13:40.2166447Z
+2026-09-04T05:13:40.2166876Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-09-04T05:13:40.2167415Z
+2026-09-04T05:13:40.2167974Z HEAD is now at 9802b66 Merge dceea60a8d686f7e73464432fa42bb8801e9e734 into 5ff4a31eaf820aa834ce186e4bdf046291ac63e7
+2026-09-04T05:13:40.2172902Z ##[endgroup]
+2026-09-04T05:13:40.2199554Z [command]/usr/bin/git log -1 --format=%H
+2026-09-04T05:13:40.2218721Z 9802b660e26f0fe4238190aaa6285dff118a019f
+2026-09-04T05:13:40.2441148Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-09-04T05:13:40.2442819Z ##[group]Run actions/setup-go@v5
+2026-09-04T05:13:40.2443193Z with:
+2026-09-04T05:13:40.2443517Z   go-version-file: go.mod
+2026-09-04T05:13:40.2443847Z   cache: true
+2026-09-04T05:13:40.2444138Z   check-latest: false
+2026-09-04T05:13:40.2446782Z   token: ***
+2026-09-04T05:13:40.2447232Z ##[endgroup]
+2026-09-04T05:13:40.3525136Z Setup go version spec 1.26.0
+2026-09-04T05:13:40.3534766Z Attempting to download 1.26.0...
+2026-09-04T05:13:40.3626007Z (node:2029) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-09-04T05:13:40.3627408Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-09-04T05:13:41.0897630Z matching 1.26.0...
+2026-09-04T05:13:41.0948885Z Acquiring 1.26.0 from https://github.com/actions/go-versions/releases/download/1.26.0-21889650668/go-1.26.0-linux-x64.tar.gz
+2026-09-04T05:13:41.6867261Z Extracting Go...
+2026-09-04T05:13:41.6955130Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/8c8372e3-299b-4798-bfa8-468e25ab17df -f /home/runner/work/_temp/9157a033-6141-4318-9087-f44618ac32a0
+2026-09-04T05:13:43.0979234Z Successfully extracted go to /home/runner/work/_temp/8c8372e3-299b-4798-bfa8-468e25ab17df
+2026-09-04T05:13:43.0980194Z Adding to the cache ...
+2026-09-04T05:13:49.2565734Z Successfully cached go to /opt/hostedtoolcache/go/1.26.0/x64
+2026-09-04T05:13:49.2568112Z Added go to the path
+2026-09-04T05:13:49.2570841Z Successfully set up Go version 1.26.0
+2026-09-04T05:13:49.2754820Z [command]/opt/hostedtoolcache/go/1.26.0/x64/bin/go env GOMODCACHE
+2026-09-04T05:13:49.2781068Z [command]/opt/hostedtoolcache/go/1.26.0/x64/bin/go env GOCACHE
+2026-09-04T05:13:49.2806615Z /home/runner/go/pkg/mod
+2026-09-04T05:13:49.2825863Z /home/runner/.cache/go-build
+2026-09-04T05:13:49.3998873Z Cache is not found
+2026-09-04T05:13:49.4022948Z go version go1.26.0 linux/amd64
+2026-09-04T05:13:49.4023173Z
+2026-09-04T05:13:49.4023537Z ##[group]go env
+2026-09-04T05:13:49.6022701Z AR='ar'
+2026-09-04T05:13:49.6023224Z CC='gcc'
+2026-09-04T05:13:49.6023866Z CGO_CFLAGS='-O2 -g'
+2026-09-04T05:13:49.6024394Z CGO_CPPFLAGS=''
+2026-09-04T05:13:49.6024834Z CGO_CXXFLAGS='-O2 -g'
+2026-09-04T05:13:49.6025337Z CGO_ENABLED='1'
+2026-09-04T05:13:49.6025792Z CGO_FFLAGS='-O2 -g'
+2026-09-04T05:13:49.6026352Z CGO_LDFLAGS='-O2 -g'
+2026-09-04T05:13:49.6026806Z CXX='g++'
+2026-09-04T05:13:49.6027295Z GCCGO='gccgo'
+2026-09-04T05:13:49.6027745Z GO111MODULE=''
+2026-09-04T05:13:49.6028141Z GOAMD64='v1'
+2026-09-04T05:13:49.6030155Z GOARCH='amd64'
+2026-09-04T05:13:49.6030592Z GOAUTH='netrc'
+2026-09-04T05:13:49.6030995Z GOBIN=''
+2026-09-04T05:13:49.6031591Z GOCACHE='/home/runner/.cache/go-build'
+2026-09-04T05:13:49.6032230Z GOCACHEPROG=''
+2026-09-04T05:13:49.6033071Z GODEBUG=''
+2026-09-04T05:13:49.6033555Z GOENV='/home/runner/.config/go/env'
+2026-09-04T05:13:49.6034072Z GOEXE=''
+2026-09-04T05:13:49.6034582Z GOEXPERIMENT=''
+2026-09-04T05:13:49.6035035Z GOFIPS140='off'
+2026-09-04T05:13:49.6035484Z GOFLAGS=''
+2026-09-04T05:13:49.6036796Z GOGCCFLAGS='-fPIC -m64 -pthread -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=/tmp/go-build3306975984=/tmp/go-build -gno-record-gcc-switches'
+2026-09-04T05:13:49.6037819Z GOHOSTARCH='amd64'
+2026-09-04T05:13:49.6038341Z GOHOSTOS='linux'
+2026-09-04T05:13:49.6038823Z GOINSECURE=''
+2026-09-04T05:13:49.6039433Z GOMOD='/home/runner/work/CLIProxyAPI/CLIProxyAPI/go.mod'
+2026-09-04T05:13:49.6040066Z GOMODCACHE='/home/runner/go/pkg/mod'
+2026-09-04T05:13:49.6040674Z GONOPROXY=''
+2026-09-04T05:13:49.6041107Z GONOSUMDB=''
+2026-09-04T05:13:49.6041556Z GOOS='linux'
+2026-09-04T05:13:49.6042107Z GOPATH='/home/runner/go'
+2026-09-04T05:13:49.6042841Z GOPRIVATE=''
+2026-09-04T05:13:49.6043374Z GOPROXY='https://proxy.golang.org,direct'
+2026-09-04T05:13:49.6044115Z GOROOT='/opt/hostedtoolcache/go/1.26.0/x64'
+2026-09-04T05:13:49.6044697Z GOSUMDB='sum.golang.org'
+2026-09-04T05:13:49.6045228Z GOTELEMETRY='local'
+2026-09-04T05:13:49.6045758Z GOTELEMETRYDIR='/home/runner/.config/go/telemetry'
+2026-09-04T05:13:49.6047121Z GOTMPDIR=''
+2026-09-04T05:13:49.6047910Z GOTOOLCHAIN='auto'
+2026-09-04T05:13:49.6048686Z GOTOOLDIR='/opt/hostedtoolcache/go/1.26.0/x64/pkg/tool/linux_amd64'
+2026-09-04T05:13:49.6049284Z GOVCS=''
+2026-09-04T05:13:49.6049635Z GOVERSION='go1.26.0'
+2026-09-04T05:13:49.6049993Z GOWORK=''
+2026-09-04T05:13:49.6050442Z PKG_CONFIG='pkg-config'
+2026-09-04T05:13:49.6050705Z
+2026-09-04T05:13:49.6051210Z ##[endgroup]
+2026-09-04T05:13:49.6195223Z ##[group]Run go test -count=1 ./internal/runtime/executor -run 'Test(ClaudeExecutorPromptID|ClaudeExecutorPrevRequest|InsertClaudePrevRequestBilling)'
+2026-09-04T05:13:49.6196545Z [36;1mgo test -count=1 ./internal/runtime/executor -run 'Test(ClaudeExecutorPromptID|ClaudeExecutorPrevRequest|InsertClaudePrevRequestBilling)'[0m
+2026-09-04T05:13:49.6224403Z shell: /usr/bin/bash -e {0}
+2026-09-04T05:13:49.6224732Z ##[endgroup]
+2026-09-04T05:13:49.6425440Z go: downloading github.com/andybalholm/brotli v1.0.6
+2026-09-04T05:13:49.6442042Z go: downloading github.com/gin-gonic/gin v1.10.1
+2026-09-04T05:13:49.6442986Z go: downloading github.com/google/uuid v1.6.0
+2026-09-04T05:13:49.6449451Z go: downloading github.com/gorilla/websocket v1.5.3
+2026-09-04T05:13:49.9034292Z go: downloading github.com/klauspost/compress v1.17.4
+2026-09-04T05:13:49.9035132Z go: downloading github.com/pierrec/xxHash v0.1.5
+2026-09-04T05:13:49.9699898Z go: downloading github.com/sirupsen/logrus v1.9.3
+2026-09-04T05:13:49.9874058Z go: downloading github.com/tidwall/gjson v1.18.0
+2026-09-04T05:13:50.0149499Z go: downloading github.com/tidwall/sjson v1.2.5
+2026-09-04T05:13:50.0258280Z go: downloading github.com/tiktoken-go/tokenizer v0.8.1
+2026-09-04T05:13:50.0419225Z go: downloading golang.org/x/net v0.57.0
+2026-09-04T05:13:50.0669138Z go: downloading golang.org/x/oauth2 v0.30.0
+2026-09-04T05:13:50.1637122Z go: downloading golang.org/x/sync v0.22.0
+2026-09-04T05:13:50.2698376Z go: downloading google.golang.org/protobuf v1.34.1
+2026-09-04T05:13:50.2902169Z go: downloading github.com/gin-contrib/sse v0.1.0
+2026-09-04T05:13:50.3360739Z go: downloading github.com/mattn/go-isatty v0.0.20
+2026-09-04T05:13:50.3455107Z go: downloading github.com/refraction-networking/utls v1.8.2
+2026-09-04T05:13:50.3888505Z go: downloading golang.org/x/crypto v0.54.0
+2026-09-04T05:13:50.4567046Z go: downloading gopkg.in/yaml.v3 v3.0.1
+2026-09-04T05:13:50.4939672Z go: downloading github.com/redis/go-redis/v9 v9.19.0
+2026-09-04T05:13:50.5572173Z go: downloading golang.org/x/sys v0.47.0
+2026-09-04T05:13:50.6047980Z go: downloading github.com/tidwall/match v1.1.1
+2026-09-04T05:13:50.6048799Z go: downloading github.com/tidwall/pretty v1.2.0
+2026-09-04T05:13:50.6576028Z go: downloading cloud.google.com/go/compute/metadata v0.3.0
+2026-09-04T05:13:50.6967834Z go: downloading github.com/go-playground/validator/v10 v10.20.0
+2026-09-04T05:13:50.7173707Z go: downloading github.com/pelletier/go-toml/v2 v2.2.2
+2026-09-04T05:13:50.7454871Z go: downloading github.com/ugorji/go/codec v1.2.12
+2026-09-04T05:13:50.7660600Z go: downloading gopkg.in/natefinch/lumberjack.v2 v2.2.1
+2026-09-04T05:13:50.7928060Z go: downloading github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
+2026-09-04T05:13:50.8194763Z go: downloading github.com/dlclark/regexp2/v2 v2.5.1
+2026-09-04T05:13:50.9625621Z go: downloading github.com/gabriel-vasile/mimetype v1.4.3
+2026-09-04T05:13:50.9626664Z go: downloading github.com/go-playground/universal-translator v0.18.1
+2026-09-04T05:13:50.9627231Z go: downloading github.com/leodido/go-urn v1.4.0
+2026-09-04T05:13:51.0167459Z go: downloading golang.org/x/text v0.40.0
+2026-09-04T05:13:51.5085331Z go: downloading go.uber.org/atomic v1.11.0
+2026-09-04T05:13:51.5089296Z go: downloading github.com/cespare/xxhash/v2 v2.3.0
+2026-09-04T05:13:51.5095550Z go: downloading github.com/go-playground/locales v0.14.1
+2026-09-04T05:14:29.0651545Z ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	0.025s
+2026-09-04T05:14:29.1478571Z ##[group]Run go test -count=1 ./internal/runtime/executor/helps -run 'TestParseClaudePromptIDBillingText'
+2026-09-04T05:14:29.1479344Z [36;1mgo test -count=1 ./internal/runtime/executor/helps -run 'TestParseClaudePromptIDBillingText'[0m
+2026-09-04T05:14:29.1500705Z shell: /usr/bin/bash -e {0}
+2026-09-04T05:14:29.1501012Z ##[endgroup]
+2026-09-04T05:14:30.9836720Z ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps	0.011s
+2026-09-04T05:14:30.9998107Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-09-04T05:14:30.9999084Z Post job cleanup.
+2026-09-04T05:14:31.1026621Z (node:7636) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-09-04T05:14:31.1027531Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-09-04T05:14:31.1095842Z [command]/opt/hostedtoolcache/go/1.26.0/x64/bin/go env GOMODCACHE
+2026-09-04T05:14:31.1137190Z [command]/opt/hostedtoolcache/go/1.26.0/x64/bin/go env GOCACHE
+2026-09-04T05:14:31.1174501Z /home/runner/go/pkg/mod
+2026-09-04T05:14:31.1187012Z /home/runner/.cache/go-build
+2026-09-04T05:14:31.1359382Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/CLIProxyAPI/CLIProxyAPI --files-from manifest.txt --use-compress-program zstdmt
+2026-09-04T05:14:32.5190921Z (node:7636) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-09-04T05:14:33.5056952Z Sent 0 of 257899164 (0.0%), 0.0 MBs/sec
+2026-09-04T05:14:34.2351490Z Sent 257899164 of 257899164 (100.0%), 142.3 MBs/sec
+2026-09-04T05:14:34.4506374Z Cache saved with the key: setup-go-Linux-x64-ubuntu24-go-1.26.0-6103afd9a675cb169b3cd026e7071847dfa274065597bda9472ac8caf5b99886
+2026-09-04T05:14:34.4635450Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-09-04T05:14:34.4636723Z Post job cleanup.
+2026-09-04T05:14:34.5349618Z [command]/usr/bin/git version
+2026-09-04T05:14:34.5383377Z git version 2.55.0
+2026-09-04T05:14:34.5412314Z Temporarily overriding HOME='/home/runner/work/_temp/6351ef8e-2d26-4cce-99b2-1bfff2d4483a' before making global git config changes
+2026-09-04T05:14:34.5413618Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-04T05:14:34.5417815Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CLIProxyAPI/CLIProxyAPI
+2026-09-04T05:14:34.5447632Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-04T05:14:34.5473888Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-04T05:14:34.5653159Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-04T05:14:34.5673313Z http.https://github.com/.extraheader
+2026-09-04T05:14:34.5682054Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-09-04T05:14:34.5708020Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-04T05:14:34.5886805Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-04T05:14:34.5912492Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-04T05:14:34.6203568Z Cleaning up orphan processes
+2026-09-04T05:14:34.6424749Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
