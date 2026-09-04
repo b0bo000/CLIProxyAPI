@@ -74,7 +74,7 @@
 
 ## Implementation Record
 
-- Commit(s): pending CI review.
+- Commit: `3c2faad43dce84fc4e75212886c76f760c144cae`.
 - Official binary confirmation: Claude Code `2.1.241` contains a UUID regex for
   `cc_prompt_id`; the captured wire order is `cc_entrypoint`, `cch`,
   `cc_prev_req`, then `cc_prompt_id`.
@@ -92,6 +92,11 @@
   expiration, concurrent calls, caller preservation, failed-request retry,
   tool continuation, session/credential isolation, and CCH idempotence.
 - Static checks: `gofmt` and `git diff --check` completed with exit status 0.
+- Local baseline focused executor test exited 0 (`ok .../executor 3.969s`).
+- Local modified focused executor/helpers tests exited 0 (`ok .../executor
+  3.908s`; `ok .../executor/helps 3.380s`).
+- GitHub focused workflow `33863098458` and build workflow `33863098452` both
+  concluded `success`.
 - Default behavior preserved: generation is restricted to the existing native
   first-party/profile policy; caller-owned and non-eligible paths are unchanged.
 - Experimental flag/config: none; this is a lifecycle implementation behind
@@ -102,16 +107,25 @@
 ## Rollback
 
 - Rollback command: `bash artifacts/CPA-CLAUDECODE-S5-3-PROMPT-ID-GENERATION-20260904/ROLLBACK.sh <independent-copy-root>`
-- Separate-copy rollback test: pending after the modified branch is committed.
-- Restored hash/status: pending; the final evidence file will include the
-  literal rollback output and post-rollback status.
+- Separate-copy rollback test: `ROLLBACK_OK` on an independent baseline
+  worktree; restored commit `db04147e44aaedd8d6e75b989cf75022aae87dec`.
+- Restored hash/status: `git diff --exit-code` exit 0, empty `git status
+  --short`, and restored baseline focused test exit 0. Windows
+  `core.autocrlf=true` means the baseline worktree byte hash differs from the
+  Git blob hash; source-hashes.txt records the blob values and Git diff is the
+  restore authority.
 
 ## Review Decision
 
-- CI run URL / run ID: pending.
-- Evidence classification after change: expected to remain `CONFIRMED_DIFFERENCE`
-  until real A/B receiver-boundary evidence is available.
-- `FIRST-READ` updated: pending CI and artifact verification.
+- CI run URL / run ID: focused
+  `https://github.com/b0bo000/CLIProxyAPI/actions/runs/33863098458`; build
+  `https://github.com/b0bo000/CLIProxyAPI/actions/runs/33863098452`.
+- Evidence classification after change: `B-12=CONFIRMED_DIFFERENCE` remains;
+  the implementation closes CPA-side generation behavior but does not prove
+  provider-side strict equivalence. Release remains `NOT STRICTLY EQUIVALENT`.
+- `FIRST-READ` updated: section 75 records the implementation and verification.
+- The `agents-md-guard` run `33863098457` failed on the pre-existing cumulative
+  AGENTS.md guard condition; it is not a source-test or build failure.
 - `STRICT-MATRIX` updated: no classification change expected.
 - Release eligible: `no`.
 - Reviewer: user review required.
