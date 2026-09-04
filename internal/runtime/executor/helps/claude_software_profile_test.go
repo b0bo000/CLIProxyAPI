@@ -359,3 +359,22 @@ func TestResolveClaudeSoftwareProfileRejectsStabilizedEntrypointDrift(t *testing
 	}
 	assertClaudeSoftwareProfileRequestError(t, errResolve)
 }
+
+func TestResolveClaudeSoftwareProfileMarksTitleRequestSeparately(t *testing.T) {
+	profile, errResolve := ResolveClaudeSoftwareProfile(
+		context.Background(),
+		nil,
+		"",
+		measuredClaudeCodeTitleHeaders(),
+		measuredClaudeCodeTitlePayload(),
+		false,
+		measuredClaudeCodeTitleConfig(),
+		false,
+	)
+	if errResolve != nil {
+		t.Fatalf("ResolveClaudeSoftwareProfile() error = %v", errResolve)
+	}
+	if !profile.Confirmed || !profile.IsTitleRequest() || profile.IsHelperProfile() {
+		t.Fatalf("profile = %#v, want confirmed title request separate from helper", profile)
+	}
+}
