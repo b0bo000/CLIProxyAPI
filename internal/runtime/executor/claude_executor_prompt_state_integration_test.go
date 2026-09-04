@@ -204,7 +204,7 @@ func TestClaudeExecutorPromptIDStreamPreservesCallerValue(t *testing.T) {
 	claudePromptIDTestPreservation(t, true)
 }
 
-func TestClaudeExecutorPromptIDIsNotGeneratedOrInherited(t *testing.T) {
+func TestClaudeExecutorPromptIDGeneratedAndStable(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
 			cfg, auth, request, options := claudePrevRequestFixture(t, "s5-2-3-absent-"+fmt.Sprint(stream), "22222222-3333-4444-8555-666666666666")
@@ -227,16 +227,68 @@ func TestClaudeExecutorPromptIDIsNotGeneratedOrInherited(t *testing.T) {
 				t.Fatalf("caller-owned request error = %v", errFirst)
 			}
 			if errSecond := claudePromptIDInvoke(stream, transport, executor, auth, request, options); errSecond != nil {
-				t.Fatalf("absent control error = %v", errSecond)
+				t.Fatalf("idempotent retry error = %v", errSecond)
 			}
 			if len(bodies) != 2 {
 				t.Fatalf("captured bodies = %d, want 2", len(bodies))
 			}
-			if promptID, count := claudePromptIDBillingField(bodies[1], "cc_prompt_id"); promptID != "" || count != 0 {
-				t.Fatalf("second request inherited/generated cc_prompt_id = %q count=%d; body=%s", promptID, count, bodies[1])
+			if promptID, count := claudePromptIDBillingField(bodies[1], "cc_prompt_id"); promptID != claudePromptIDIntegrationValue || count != 1 {
+				t.Fatalf("idempotent retry cc_prompt_id = %q count=%d, want caller value %q; body=%s", promptID, count, claudePromptIDIntegrationValue, bodies[1])
 			}
-			if strings.Contains(string(bodies[1]), "cc_prompt_id=") {
-				t.Fatalf("second request contains generated prompt field: %s", bodies[1])
+
+			newPayload := bytes.Replace(request.Payload, []byte(`"test"`), []byte(`"second"`), 1)
+			newRequest := request
+			newRequest.Payload = newPayload
+			newOptions := options
+			newOptions.OriginalRequest = newPayload
+			if errThird := claudePromptIDInvoke(stream, transport, executor, auth, newRequest, newOptions); errThird != nil {
+				t.Fatalf("new prompt error = %v", errThird)
+			}
+			if len(bodies) != 3 {
+				t.Fatalf("captured bodies = %d, want 3", len(bodies))
+			}
+			if promptID, count := claudePromptIDBillingField(bodies[2], "cc_prompt_id"); promptID == claudePromptIDIntegrationValue || count != 1 {
+				t.Fatalf("new prompt cc_prompt_id = %q count=%d, want one distinct generated value; body=%s", promptID, count, bodies[2])
+			}
+		})
+	}
+}
+
+func TestClaudeExecutorPromptIDRetryAfterRoundTripperFailureKeepsID(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			cfg, auth, request, options := claudePrevRequestFixture(t, "s5-3-failure-"+fmt.Sprint(stream), "44444444-5555-4666-8777-888888888888")
+			var bodies [][]byte
+			calls := 0
+			transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				body, errRead := io.ReadAll(req.Body)
+				if errRead != nil {
+					return nil, errRead
+				}
+				bodies = append(bodies, body)
+				if calls == 1 {
+					return nil, fmt.Errorf("synthetic transport failure")
+				}
+				if stream {
+					return claudePrevRequestStreamResponse(req, "req_s523_failure_2", claudePrevRequestCompleteSSE("msg_s523_failure_2")), nil
+				}
+				return claudePrevRequestSuccessResponse(req, "req_s523_failure_2"), nil
+			})
+			executor := NewClaudeExecutor(cfg)
+			if errFirst := claudePromptIDInvoke(stream, transport, executor, auth, request, options); errFirst == nil {
+				t.Fatal("first request error = nil, want synthetic transport failure")
+			}
+			if errSecond := claudePromptIDInvoke(stream, transport, executor, auth, request, options); errSecond != nil {
+				t.Fatalf("retry request error = %v", errSecond)
+			}
+			if len(bodies) != 2 {
+				t.Fatalf("captured bodies = %d, want 2", len(bodies))
+			}
+			firstID, firstCount := claudePromptIDBillingField(bodies[0], "cc_prompt_id")
+			secondID, secondCount := claudePromptIDBillingField(bodies[1], "cc_prompt_id")
+			if firstCount != 1 || secondCount != 1 || firstID == "" || firstID != secondID {
+				t.Fatalf("retry prompt IDs = (%q,%d)/(%q,%d), want one stable UUID", firstID, firstCount, secondID, secondCount)
 			}
 		})
 	}

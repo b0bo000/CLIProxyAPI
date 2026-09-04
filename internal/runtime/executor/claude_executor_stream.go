@@ -194,10 +194,34 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	if err != nil {
 		return nil, err
 	}
+	promptID, err := beginClaudePromptIDForRequest(
+		bodyForUpstream,
+		auth,
+		apiKey,
+		claudePrevRequestScope,
+		baseURL,
+		softwareProfile,
+		cchSigning,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if promptID != "" {
+		bodyForUpstream, err = helps.InsertClaudePromptIDBilling(bodyForUpstream, promptID)
+		if err != nil {
+			return nil, fmt.Errorf("insert Claude cc_prompt_id: %w", err)
+		}
+	}
 	cchBilling := ""
 	if cchSigning {
 		if !softwareProfile.IsHelperProfile() || claudeBodyNeedsBillingFallback(bodyForUpstream) {
 			cchBilling = claudeCCHFallbackBillingHeaderWithProfile(ctx, e.cfg, bodyForUpstream, softwareProfile)
+			if promptID != "" {
+				cchBilling, err = helps.AppendClaudePromptIDBillingText(cchBilling, promptID)
+				if err != nil {
+					return nil, fmt.Errorf("append Claude cc_prompt_id to fallback billing: %w", err)
+				}
+			}
 		}
 		bodyForUpstream, err = finalizeAnthropicMessagesBodyCCH(bodyForUpstream, cchBilling)
 		if err != nil {
