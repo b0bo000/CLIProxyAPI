@@ -1,0 +1,36 @@
+name: claude-prompt-state-test
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/claude-prompt-state-test.yml"
+      - "docs/change-cards/CC-20260903-S5-2.3-PROMPT-ID-PRESERVATION.md"
+      - "internal/runtime/executor/claude_executor_prompt_state_integration_test.go"
+      - "internal/runtime/executor/claude_executor_prompt_state_test.go"
+      - "internal/runtime/executor/claude_executor_prev_request_execute_test.go"
+      - "internal/runtime/executor/claude_executor_prev_request_stream_test.go"
+      - "internal/runtime/executor/helps/claude_prompt_state.go"
+      - "internal/runtime/executor/helps/claude_prompt_state_test.go"
+
+permissions:
+  contents: read
+
+jobs:
+  focused-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test executor prompt and prior-request paths
+        run: >-
+          go test -count=1 ./internal/runtime/executor
+          -run 'Test(ClaudeExecutorPromptID|ClaudeExecutorPrevRequest|InsertClaudePrevRequestBilling)'
+      - name: Test prompt ID parser
+        run: >-
+          go test -count=1 ./internal/runtime/executor/helps
+          -run 'TestParseClaudePromptIDBillingText'

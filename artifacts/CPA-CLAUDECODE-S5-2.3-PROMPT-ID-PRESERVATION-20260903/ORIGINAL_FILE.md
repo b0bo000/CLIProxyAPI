@@ -1,0 +1,16 @@
+# S5-2.3 Baseline
+
+- Baseline commit: `0a1a1c6a5fdef2271fdd05f8c27bc05a52044ded`
+- New integration test path: absent
+- Production source changes authorized: none
+
+## Preserved SHA-256
+
+```text
+39b9e06e0c312f951db0c13a7a07861adbb041f100ec4a6bbcb9125e4d9f99c7  internal/runtime/executor/claude_executor_execute.go
+4b5a8acc12a6cef570c4a587d7b8976fcff388f3c405857f1e8d60c076d9d989  internal/runtime/executor/claude_executor_stream.go
+c1794f3bcfb68e9a7fed85c19a5327b7a090cbd8aa331df9564b6569ec1bdb5f  internal/runtime/executor/claude_executor_request.go
+3129616e91365dab8ebf5faa0f6a38ca9445b6e5a9959c7c48b25cbf61053bed  internal/runtime/executor/claude_executor_prompt_state_test.go
+73b5dcfe831f93f2452ef17b58a5b11c0da6a0462e5c51c6f93334e35b9ea10b  internal/runtime/executor/helps/claude_prompt_state.go
+0d639da04e76e0c34176593aa2ccc44cb8cfca1a0d94ec47a6e61c89a311b6f3  internal/runtime/executor/helps/claude_prompt_state_test.go
+```
