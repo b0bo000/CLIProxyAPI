@@ -82,3 +82,45 @@ func TestClaudePromptIDGenerationExcludesResolvedTitleRequest(t *testing.T) {
 		t.Fatalf("main profile = %#v, want prompt-ID eligibility", mainProfile)
 	}
 }
+
+func TestClaudePromptIDRequestKindCompactionBoundary(t *testing.T) {
+	const compactInstruction = `CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.
+
+Your task is to create a detailed summary of the conversation so far.
+<analysis>reason about the retained context</analysis>
+<summary>preserve the important state</summary>`
+
+	tests := []struct {
+		name string
+		body string
+		want claudePromptIDRequestKind
+	}{
+		{
+			name: "string content",
+			body: `{"messages":[{"role":"user","content":"` + compactInstruction + `"}]}`,
+			want: claudePromptIDRequestKindCompactionBoundary,
+		},
+		{
+			name: "text block content",
+			body: `{"messages":[{"role":"user","content":[{"type":"text","text":"` + compactInstruction + `"}]}]}`,
+			want: claudePromptIDRequestKindCompactionBoundary,
+		},
+		{
+			name: "historical compact text does not classify continuation",
+			body: `{"messages":[{"role":"user","content":"` + compactInstruction + `"},{"role":"assistant","content":"summary complete"},{"role":"user","content":"continue normally"}]}`,
+			want: claudePromptIDRequestKindMessages,
+		},
+		{
+			name: "near miss",
+			body: `{"messages":[{"role":"user","content":"CRITICAL: Respond with TEXT ONLY. Do NOT call any tools. Your task is to create a detailed summary of the conversation so far. <analysis>reason</analysis>"}]}`,
+			want: claudePromptIDRequestKindMessages,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := claudePromptIDRequestKindForBody([]byte(tt.body)); got != tt.want {
+				t.Fatalf("request kind = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

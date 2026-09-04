@@ -155,6 +155,9 @@ func TestClaudePrevRequestCountTokensAndCompactDoNotCreateChain(t *testing.T) {
 		if got := claudePrevRequestValue(countTokensBody); got != "" {
 			t.Fatalf("count_tokens cc_prev_req = %q, want absent", got)
 		}
+		if got, count := claudePromptIDBillingField(countTokensBody, "cc_prompt_id"); got != "" || count != 0 {
+			t.Fatalf("count_tokens cc_prompt_id = %q count=%d, want absent", got, count)
+		}
 		if _, errExecute := claudePrevRequestExecute(t, transport, executor, auth, request, options); errExecute != nil {
 			t.Fatalf("first Execute() error = %v", errExecute)
 		}

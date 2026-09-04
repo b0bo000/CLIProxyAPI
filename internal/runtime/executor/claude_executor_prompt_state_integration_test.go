@@ -300,6 +300,55 @@ func TestClaudeExecutorPromptIDSubagentInheritsParent(t *testing.T) {
 	}
 }
 
+func TestClaudeExecutorPromptIDCompactBoundaryExcludedAndPostCompactRotates(t *testing.T) {
+	const compactInstruction = "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools. Your task is to create a detailed summary of the conversation so far. <analysis>reason</analysis><summary>preserve state</summary>"
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			cfg, auth, request, options := claudePrevRequestFixture(t, "s5-3-1c-compact-"+fmt.Sprint(stream), "77777777-8888-4999-aaaa-bbbbbbbbbbbb")
+			compactRequest := request
+			compactPayload := bytes.Replace(request.Payload, []byte(`"test"`), []byte(fmt.Sprintf(`%q`, compactInstruction)), 1)
+			compactRequest.Payload = compactPayload
+			compactOptions := options
+			compactOptions.OriginalRequest = compactPayload
+			postRequest := request
+			postPayload := bytes.Replace(request.Payload, []byte(`"test"`), []byte(`"after compact"`), 1)
+			postRequest.Payload = postPayload
+			postOptions := options
+			postOptions.OriginalRequest = postPayload
+			var bodies [][]byte
+			transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				body, errRead := io.ReadAll(req.Body)
+				if errRead != nil {
+					return nil, errRead
+				}
+				bodies = append(bodies, body)
+				index := len(bodies)
+				if stream {
+					return claudePrevRequestStreamResponse(req, fmt.Sprintf("req_s531c_%d", index), claudePrevRequestCompleteSSE(fmt.Sprintf("msg_s531c_%d", index))), nil
+				}
+				return claudePrevRequestSuccessResponse(req, fmt.Sprintf("req_s531c_%d", index)), nil
+			})
+			executor := NewClaudeExecutor(cfg)
+			if errExecute := claudePromptIDInvoke(stream, transport, executor, auth, compactRequest, compactOptions); errExecute != nil {
+				t.Fatalf("compact request error = %v", errExecute)
+			}
+			if errExecute := claudePromptIDInvoke(stream, transport, executor, auth, postRequest, postOptions); errExecute != nil {
+				t.Fatalf("post-compact request error = %v", errExecute)
+			}
+			if len(bodies) != 2 {
+				t.Fatalf("captured bodies = %d, want 2", len(bodies))
+			}
+			if compactID, compactCount := claudePromptIDBillingField(bodies[0], "cc_prompt_id"); compactID != "" || compactCount != 0 {
+				t.Fatalf("compact cc_prompt_id = %q count=%d, want absent", compactID, compactCount)
+			}
+			postID, postCount := claudePromptIDBillingField(bodies[1], "cc_prompt_id")
+			if postID == "" || postCount != 1 {
+				t.Fatalf("post-compact cc_prompt_id = %q count=%d, want one generated value", postID, postCount)
+			}
+		})
+	}
+}
+
 func TestClaudeExecutorPromptIDUnmarkedAgentRemainsIsolated(t *testing.T) {
 	cfg, auth, parentRequest, parentOptions := claudePrevRequestFixture(t, "s5-3-1b-isolated", "66666666-7777-4888-9999-aaaaaaaaaaaa")
 	childRequest := parentRequest
