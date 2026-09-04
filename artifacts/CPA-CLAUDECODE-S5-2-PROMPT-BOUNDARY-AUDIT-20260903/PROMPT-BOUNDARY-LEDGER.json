@@ -7,6 +7,37 @@
   "changed_branch_field": "S5-2 evidence-only audit / B-12 cc_prompt_id prompt boundary",
   "source_modification": false,
   "hash_policy": "Only SHA-256 prefixes (first 12 hex characters) are emitted; raw IDs, prompt text, credentials and email addresses are excluded.",
+  "correction_addendum_s5_2_2": {
+    "marker": "S5-2.2 promptId routing correction",
+    "supersedes": "Only the earlier interpretation that runner stdout represented all local JSONL prompt state; historical request counts and field-absence observations remain unchanged.",
+    "runner_stdout_promptId_hits": 0,
+    "official_session_transcript": {
+      "files": 7,
+      "prompt_rows": 84,
+      "unique_prompt_hashes": 14,
+      "upstream_unique_prompt_hashes": 13,
+      "matching_upstream_hashes": 13,
+      "transcript_only_compact_hash": "sha256:041420908fd7"
+    },
+    "cpa_b_session_transcript": {
+      "files": 6,
+      "prompt_rows": 28,
+      "unique_prompt_hashes": 17,
+      "capture_files_scanned": 688,
+      "exact_prompt_values_found": 0,
+      "message_uuid_values_found": 0,
+      "parent_uuid_values_found": 0,
+      "session_values_found": 5,
+      "session_values_total": 5,
+      "promptId_literal_hits": 0,
+      "cc_prompt_id_literal_hits": 0
+    },
+    "static_2_1_241_result": "The official billing builder requires a UUID-shaped caller prompt value, firstParty provider mode and a base URL accepted as api.anthropic.com; cc_prev_req uses the same provider/base-URL gate.",
+    "corrected_result": "Claude Code creates caller-owned promptId state on both A and B. Official direct A transmits the same value as cc_prompt_id; custom-base-URL B suppresses it before CPA incoming, so CPA cannot recover the exact opaque value server-side.",
+    "generator_authorized": false,
+    "s5_3_status": "BLOCKED_FOR_CPA_ONLY_GENERATION",
+    "canonical_evidence": "C:/Users/Administrator/gpt-5.6-instruct/artifacts/CPA-CLAUDECODE-S5-2.2-PROMPTID-ROUTING-AUDIT-20260903/"
+  },
   "source_inventory": {
     "official_a_completion": "C:/Users/Administrator/gpt-5.6-instruct/artifacts/ClaudeCode-A-remote-official-gap-suite-20260824/OFFICIAL-A-REMOTE-COMPLETION.json",
     "official_a_inventory": "C:/Users/Administrator/gpt-5.6-instruct/artifacts/ClaudeCode-A-remote-official-gap-suite-20260824/OFFICIAL-A-COMPLETE-REQUEST-INVENTORY.json",

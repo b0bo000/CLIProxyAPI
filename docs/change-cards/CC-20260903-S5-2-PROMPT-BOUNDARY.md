@@ -73,3 +73,32 @@ is available. Only then may a separate source commit consider lifecycle state
 or missing-ID generation.
 
 Canonical evidence: `artifacts/CPA-CLAUDECODE-S5-2-PROMPT-BOUNDARY-AUDIT-20260903/`.
+
+## S5-2.2 promptId routing correction
+
+This addendum supersedes only the earlier interpretation of local JSONL; it
+does not rewrite or discard the original S5-2 measurements. The runner's
+`claude.stdout.jsonl` has zero `promptId` fields, but it is not the complete
+Claude Code session transcript.
+
+The official A session transcripts contain 14 prompt hashes. Thirteen match
+all 13 prompt hashes observed in the official upstream billing header; the
+remaining hash belongs only to the explicit compact transcript event. B
+session transcripts contain 17 prompt hashes, but a complete scan of all 688
+retained CPA stage/capture files finds none of those exact values and no
+`promptId` or `cc_prompt_id` field names. All five B session IDs do occur in
+the capture corpus, so the missing prompt value is not evidence that session
+association itself disappeared.
+
+Static inspection of the saved official 2.1.241 binary confirms that the
+billing builder validates a UUID prompt value and emits `cc_prompt_id` only
+when provider mode is `firstParty` and the base-URL gate accepts
+`api.anthropic.com`. `cc_prev_req` has the same gate. Thus B's official client
+creates caller-owned prompt state but suppresses these billing values before
+the custom-base-URL request reaches CPA.
+
+CPA cannot reconstruct the exact opaque caller value from another ID or from
+request content. S5-3 remains `BLOCKED_FOR_CPA_ONLY_GENERATION`; any future
+work requires a separately approved trusted caller-to-CPA forwarding contract.
+The withdrawn S5-3A attempt remains withdrawn. Canonical correction evidence:
+`C:/Users/Administrator/gpt-5.6-instruct/artifacts/CPA-CLAUDECODE-S5-2.2-PROMPTID-ROUTING-AUDIT-20260903/`.
