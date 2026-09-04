@@ -12,7 +12,7 @@ import (
 // caller must already be a confirmed native request or an explicit CLI profile;
 // helper/title requests and custom gateways retain their measured behavior.
 func claudePromptIDGenerationEligible(baseURL string, profile helps.ResolvedClaudeSoftwareProfile, cchSigning bool) bool {
-	if !cchSigning || !isAnthropicUpstreamBase(baseURL) || profile.IsHelperProfile() {
+	if !cchSigning || !isAnthropicUpstreamBase(baseURL) || profile.IsHelperProfile() || profile.IsTitleRequest() {
 		return false
 	}
 	return profile.Confirmed || profile.Provenance == helps.ClaudeSoftwareProfileConfiguredCLI

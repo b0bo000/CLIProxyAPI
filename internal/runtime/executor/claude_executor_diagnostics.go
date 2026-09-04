@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	claudeauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/claude"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	"github.com/tidwall/gjson"
@@ -98,6 +99,18 @@ func claudeDiagnosticsCredentialIdentity(auth *cliproxyauth.Auth) string {
 	}
 	if accountUUID := helps.ClaudeCredentialAccountUUID(auth); accountUUID != "" {
 		return "account:" + accountUUID
+	}
+	return ""
+}
+
+func claudeCaptureProxyCacheKey(cfg *config.Config, auth *cliproxyauth.Auth) string {
+	if auth != nil {
+		if value := strings.TrimSpace(auth.ProxyURL); value != "" {
+			return value
+		}
+	}
+	if cfg != nil {
+		return strings.TrimSpace(cfg.ProxyURL)
 	}
 	return ""
 }
