@@ -254,6 +254,87 @@ func TestClaudeExecutorPromptIDGeneratedAndStable(t *testing.T) {
 	}
 }
 
+func TestClaudeExecutorPromptIDSubagentInheritsParent(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			cfg, auth, parentRequest, parentOptions := claudePrevRequestFixture(t, "s5-3-1b-inherit-"+fmt.Sprint(stream), "55555555-6666-4777-8888-999999999999")
+			childRequest := parentRequest
+			childPayload := bytes.Replace(parentRequest.Payload, []byte(`"test"`), []byte(`"different child"`), 1)
+			childRequest.Payload = childPayload
+			childRequest, childOptions := claudePromptIDWithBillingFields(t, childRequest, parentOptions, " cc_is_subagent=true;")
+			childOptions.Headers = parentOptions.Headers.Clone()
+			childOptions.Headers.Set("X-Claude-Code-Agent-Id", "subagent-1")
+
+			var bodies [][]byte
+			transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				body, errRead := io.ReadAll(req.Body)
+				if errRead != nil {
+					return nil, errRead
+				}
+				bodies = append(bodies, body)
+				index := len(bodies)
+				if stream {
+					return claudePrevRequestStreamResponse(req, fmt.Sprintf("req_s531b_%d", index), claudePrevRequestCompleteSSE(fmt.Sprintf("msg_s531b_%d", index))), nil
+				}
+				return claudePrevRequestSuccessResponse(req, fmt.Sprintf("req_s531b_%d", index)), nil
+			})
+			executor := NewClaudeExecutor(cfg)
+			if errParent := claudePromptIDInvoke(stream, transport, executor, auth, parentRequest, parentOptions); errParent != nil {
+				t.Fatalf("parent request error = %v", errParent)
+			}
+			if errChild := claudePromptIDInvoke(stream, transport, executor, auth, childRequest, childOptions); errChild != nil {
+				t.Fatalf("child request error = %v", errChild)
+			}
+			if len(bodies) != 2 {
+				t.Fatalf("captured bodies = %d, want 2", len(bodies))
+			}
+			parentID, parentCount := claudePromptIDBillingField(bodies[0], "cc_prompt_id")
+			childID, childCount := claudePromptIDBillingField(bodies[1], "cc_prompt_id")
+			if parentCount != 1 || childCount != 1 || parentID == "" || childID != parentID {
+				t.Fatalf("parent/child prompt IDs = (%q,%d)/(%q,%d), want one shared ID", parentID, parentCount, childID, childCount)
+			}
+			if got, count := claudePromptIDBillingField(bodies[1], "cc_is_subagent"); got != "true" || count != 1 {
+				t.Fatalf("child subagent marker = %q count=%d, want true exactly once", got, count)
+			}
+		})
+	}
+}
+
+func TestClaudeExecutorPromptIDUnmarkedAgentRemainsIsolated(t *testing.T) {
+	cfg, auth, parentRequest, parentOptions := claudePrevRequestFixture(t, "s5-3-1b-isolated", "66666666-7777-4888-9999-aaaaaaaaaaaa")
+	childRequest := parentRequest
+	childPayload := bytes.Replace(parentRequest.Payload, []byte(`"test"`), []byte(`"different unmarked child"`), 1)
+	childRequest.Payload = childPayload
+	childOptions := parentOptions
+	childOptions.OriginalRequest = childPayload
+	childOptions.Headers = parentOptions.Headers.Clone()
+	childOptions.Headers.Set("X-Claude-Code-Agent-Id", "subagent-1")
+	var bodies [][]byte
+	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		body, errRead := io.ReadAll(req.Body)
+		if errRead != nil {
+			return nil, errRead
+		}
+		bodies = append(bodies, body)
+		return claudePrevRequestSuccessResponse(req, fmt.Sprintf("req_s531b_iso_%d", len(bodies))), nil
+	})
+	executor := NewClaudeExecutor(cfg)
+	if errParent := claudePromptIDInvoke(false, transport, executor, auth, parentRequest, parentOptions); errParent != nil {
+		t.Fatalf("parent request error = %v", errParent)
+	}
+	if errChild := claudePromptIDInvoke(false, transport, executor, auth, childRequest, childOptions); errChild != nil {
+		t.Fatalf("unmarked child request error = %v", errChild)
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("captured bodies = %d, want 2", len(bodies))
+	}
+	parentID, parentCount := claudePromptIDBillingField(bodies[0], "cc_prompt_id")
+	childID, childCount := claudePromptIDBillingField(bodies[1], "cc_prompt_id")
+	if parentCount != 1 || childCount != 1 || parentID == "" || childID == "" || childID == parentID {
+		t.Fatalf("unmarked parent/child IDs = (%q,%d)/(%q,%d), want distinct IDs", parentID, parentCount, childID, childCount)
+	}
+}
+
 func TestClaudeExecutorPromptIDRetryAfterRoundTripperFailureKeepsID(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {

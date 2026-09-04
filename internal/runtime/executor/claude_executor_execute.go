@@ -271,10 +271,14 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	confirmedClaudeCode := softwareProfile.Confirmed
 	claudeSessionID := ""
 	claudePrevRequestScope := ""
+	claudePromptIDScope := ""
 	if confirmedClaudeCode || fp.ProfileClaudeCodeCLI {
 		claudeSessionID = helps.ClaudeAgentSessionUUIDForRequest(incomingHeaders, originalPayload, req.Payload, confirmedClaudeCode, opts.Metadata, req.Metadata)
 		if scope, ok := helps.ClaudeCodeExecutionScope(ctx, originalPayload, incomingHeaders); ok {
 			claudePrevRequestScope = scope
+		}
+		if scope, ok := helps.ClaudeCodePromptIDScope(ctx, originalPayload, incomingHeaders); ok {
+			claudePromptIDScope = scope
 		}
 	}
 	originalTranslated := helps.TranslateRequestWithAPIKeyModelCompatibility(ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, upstreamStream, helps.APIKeyModelIsCompat(req))
@@ -413,7 +417,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		bodyForUpstream,
 		auth,
 		apiKey,
-		claudePrevRequestScope,
+		claudePromptIDScope,
 		baseURL,
 		softwareProfile,
 		cchSigning,

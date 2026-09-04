@@ -16,6 +16,8 @@ import (
 
 const ClaudePromptIDBillingField = "cc_prompt_id"
 
+const claudeSubagentBillingField = "cc_is_subagent"
+
 const (
 	claudePromptStateTTL            = time.Hour
 	claudePromptStateCleanupPeriod  = 15 * time.Minute
@@ -112,6 +114,49 @@ func ClaudePromptIDFromBody(body []byte) (string, bool, error) {
 		return "", false, nil
 	}
 	return ParseClaudePromptIDBillingText(candidates[0].text)
+}
+
+// ClaudeCodeSubagentMarkerFromBody reads the explicit first-party subagent
+// marker from the single Claude billing block. A malformed or ambiguous body
+// fails closed as (false, false, error); callers that only need a routing
+// decision can treat any non-nil error as an absent marker.
+func ClaudeCodeSubagentMarkerFromBody(body []byte) (bool, bool, error) {
+	if !gjson.ValidBytes(body) {
+		return false, false, fmt.Errorf("parse Claude subagent marker: malformed JSON body")
+	}
+	candidates := claudePromptBillingCandidates(body)
+	if len(candidates) > 1 {
+		return false, false, fmt.Errorf("parse Claude subagent marker: multiple billing blocks")
+	}
+	if len(candidates) == 0 {
+		return false, false, nil
+	}
+	trimmed := strings.TrimSpace(candidates[0].text)
+	const prefix = "x-anthropic-billing-header:"
+	if !strings.HasPrefix(trimmed, prefix) {
+		return false, false, nil
+	}
+	found := false
+	value := ""
+	for _, segment := range strings.Split(trimmed[len(prefix):], ";") {
+		part := strings.TrimSpace(segment)
+		if part == "" {
+			continue
+		}
+		key, fieldValue, ok := strings.Cut(part, "=")
+		if !ok || strings.TrimSpace(key) == "" {
+			return false, false, fmt.Errorf("parse Claude subagent marker: malformed billing segment %q", part)
+		}
+		if strings.TrimSpace(key) != claudeSubagentBillingField {
+			continue
+		}
+		if found {
+			return false, false, fmt.Errorf("parse Claude subagent marker: duplicate %s", claudeSubagentBillingField)
+		}
+		found = true
+		value = strings.TrimSpace(fieldValue)
+	}
+	return value == "true", found, nil
 }
 
 type claudePromptBillingCandidate struct {
@@ -214,6 +259,17 @@ func appendClaudePromptIDBillingText(text, promptID string) (string, error) {
 // idempotent retry. A tool-result continuation reuses the active ID. State is
 // keyed by credential and session/agent scope, and caller-owned IDs always win.
 func BeginClaudePromptID(credentialIdentity, sessionScope string, body []byte) (promptID string, generated bool, err error) {
+	return beginClaudePromptID(credentialIdentity, sessionScope, body, false)
+}
+
+// BeginClaudePromptIDInherited resolves a subagent request against an already
+// active parent prompt scope. It never allocates a new ID when the parent
+// state is absent, so an orphan or reordered child remains unannotated.
+func BeginClaudePromptIDInherited(credentialIdentity, sessionScope string, body []byte) (promptID string, generated bool, err error) {
+	return beginClaudePromptID(credentialIdentity, sessionScope, body, true)
+}
+
+func beginClaudePromptID(credentialIdentity, sessionScope string, body []byte, inheritParent bool) (promptID string, generated bool, err error) {
 	credentialIdentity = strings.TrimSpace(credentialIdentity)
 	sessionScope = strings.TrimSpace(sessionScope)
 	if credentialIdentity == "" || sessionScope == "" {
@@ -251,6 +307,15 @@ func BeginClaudePromptID(credentialIdentity, sessionScope string, body []byte) (
 		return callerID, false, nil
 	}
 	if continuation {
+		if !found || entry.promptID == "" {
+			return "", false, nil
+		}
+		entry.lastAccess = access
+		entry.expiresAt = now.Add(claudePromptStateTTL)
+		claudePromptState.entries[key] = entry
+		return entry.promptID, false, nil
+	}
+	if inheritParent {
 		if !found || entry.promptID == "" {
 			return "", false, nil
 		}

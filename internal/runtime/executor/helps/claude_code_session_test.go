@@ -97,6 +97,34 @@ func TestClaudeCodeExecutionScopeIsolatesAgents(t *testing.T) {
 	}
 }
 
+func TestClaudeCodePromptIDScopeMapsExplicitSubagentToRoot(t *testing.T) {
+	sessionID := "session-prompt-scope"
+	rootHeaders := http.Header{}
+	rootHeaders.Set(ClaudeCodeSessionHeader, sessionID)
+	childHeaders := rootHeaders.Clone()
+	childHeaders.Set(ClaudeCodeAgentHeader, "subagent-1")
+	childBody := []byte(`{"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.241.a; cc_entrypoint=sdk-cli; cc_is_subagent=true;"}]}`)
+	nonSubagentBody := []byte(`{"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.241.a; cc_entrypoint=sdk-cli;"}]}`)
+
+	rootScope, ok := ClaudeCodePromptIDScope(context.Background(), nil, rootHeaders)
+	if !ok || rootScope != "claude:"+sessionID+":agent:main" {
+		t.Fatalf("root scope = %q, %v", rootScope, ok)
+	}
+	childScope, ok := ClaudeCodePromptIDScope(context.Background(), childBody, childHeaders)
+	if !ok || childScope != rootScope {
+		t.Fatalf("subagent scope = %q, %v, want root %q", childScope, ok, rootScope)
+	}
+	isolatedScope, ok := ClaudeCodePromptIDScope(context.Background(), nonSubagentBody, childHeaders)
+	if !ok || isolatedScope == rootScope || isolatedScope != "claude:"+sessionID+":agent:subagent-1" {
+		t.Fatalf("unmarked child scope = %q, %v, want isolated agent scope", isolatedScope, ok)
+	}
+	malformedBody := []byte(`{"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.241.a; broken;"}]}`)
+	malformedScope, ok := ClaudeCodePromptIDScope(context.Background(), malformedBody, childHeaders)
+	if !ok || malformedScope != isolatedScope {
+		t.Fatalf("malformed marker scope = %q, %v, want isolated scope %q", malformedScope, ok, isolatedScope)
+	}
+}
+
 func TestClaudeCodePromptCacheDeterministicAndAgentScoped(t *testing.T) {
 	rootHeaders := http.Header{}
 	rootHeaders.Set(ClaudeCodeSessionHeader, "session-cache-agents")

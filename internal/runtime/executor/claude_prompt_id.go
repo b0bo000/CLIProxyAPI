@@ -32,7 +32,17 @@ func beginClaudePromptIDForRequest(
 	if strings.TrimSpace(identity) == "" || strings.TrimSpace(sessionScope) == "" {
 		return "", nil
 	}
-	promptID, _, errPrompt := helps.BeginClaudePromptID(identity, sessionScope, body)
+	isSubagent, markerFound, errMarker := helps.ClaudeCodeSubagentMarkerFromBody(body)
+	if errMarker != nil {
+		return "", fmt.Errorf("resolve Claude subagent marker: %w", errMarker)
+	}
+	var promptID string
+	var errPrompt error
+	if markerFound && isSubagent {
+		promptID, _, errPrompt = helps.BeginClaudePromptIDInherited(identity, sessionScope, body)
+	} else {
+		promptID, _, errPrompt = helps.BeginClaudePromptID(identity, sessionScope, body)
+	}
 	if errPrompt != nil {
 		return "", fmt.Errorf("resolve Claude cc_prompt_id: %w", errPrompt)
 	}

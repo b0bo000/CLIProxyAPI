@@ -3,6 +3,7 @@ package helps
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -93,6 +94,43 @@ func TestParseClaudePromptIDBillingText(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSubagentMarkerFromBody(t *testing.T) {
+	t.Parallel()
+
+	base := `{"model":"m","system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.241.a; cc_entrypoint=sdk-cli; %s"}],"messages":[{"role":"user","content":"prompt"}]}`
+	tests := []struct {
+		name      string
+		billing   string
+		wantValue bool
+		wantFound bool
+		wantErr   bool
+	}{
+		{name: "true", billing: "cc_is_subagent=true;", wantValue: true, wantFound: true},
+		{name: "false", billing: "cc_is_subagent=false;", wantFound: true},
+		{name: "absent", billing: "", wantFound: false},
+		{name: "duplicate", billing: "cc_is_subagent=true; cc_is_subagent=false;", wantErr: true},
+		{name: "malformed", billing: "broken;", wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(base, test.billing))
+			gotValue, gotFound, errMarker := ClaudeCodeSubagentMarkerFromBody(body)
+			if test.wantErr {
+				if errMarker == nil {
+					t.Fatal("ClaudeCodeSubagentMarkerFromBody() error = nil, want error")
+				}
+				return
+			}
+			if errMarker != nil {
+				t.Fatalf("ClaudeCodeSubagentMarkerFromBody() error = %v", errMarker)
+			}
+			if gotValue != test.wantValue || gotFound != test.wantFound {
+				t.Fatalf("marker = (%v, %v), want (%v, %v)", gotValue, gotFound, test.wantValue, test.wantFound)
+			}
+		})
+	}
+}
+
 func TestBeginClaudePromptIDLifecycle(t *testing.T) {
 	resetClaudePromptStateForTest()
 	defer resetClaudePromptStateForTest()
@@ -134,6 +172,27 @@ func TestBeginClaudePromptIDToolContinuationWithoutStateStaysAbsent(t *testing.T
 	continuation := []byte(`{"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-1","content":"done"}]}]}`)
 	if id, generated, errBegin := BeginClaudePromptID("credential-a", "claude:session-a:agent:main", continuation); errBegin != nil || generated || id != "" {
 		t.Fatalf("orphan continuation = (%q, %v, %v), want absent", id, generated, errBegin)
+	}
+}
+
+func TestBeginClaudePromptIDInheritedReusesParentAcrossBoundary(t *testing.T) {
+	resetClaudePromptStateForTest()
+	defer resetClaudePromptStateForTest()
+
+	parent := []byte(`{"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.241.a; cc_entrypoint=sdk-cli;"}],"messages":[{"role":"user","content":"parent"}]}`)
+	child := []byte(`{"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.241.a; cc_entrypoint=sdk-cli; cc_is_subagent=true;"}],"messages":[{"role":"user","content":"different child boundary"}]}`)
+	parentID, generated, errParent := BeginClaudePromptID("credential-inherit", "claude:session-inherit:agent:main", parent)
+	if errParent != nil || !generated || parentID == "" {
+		t.Fatalf("parent = (%q, %v, %v), want generated ID", parentID, generated, errParent)
+	}
+	childID, childGenerated, errChild := BeginClaudePromptIDInherited("credential-inherit", "claude:session-inherit:agent:main", child)
+	if errChild != nil || childGenerated || childID != parentID {
+		t.Fatalf("child = (%q, %v, %v), want inherited parent %q", childID, childGenerated, errChild, parentID)
+	}
+
+	orphanID, orphanGenerated, errOrphan := BeginClaudePromptIDInherited("credential-orphan", "claude:session-orphan:agent:main", child)
+	if errOrphan != nil || orphanGenerated || orphanID != "" {
+		t.Fatalf("orphan child = (%q, %v, %v), want absent without parent state", orphanID, orphanGenerated, errOrphan)
 	}
 }
 
