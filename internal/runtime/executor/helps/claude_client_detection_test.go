@@ -69,27 +69,6 @@ func measuredClaudeCodeStructuredHelperPayload() []byte {
 	return []byte(`{"model":"claude-haiku-4-5-20251001","messages":[{"role":"user","content":[{"type":"text","text":"helper probe"}]}],"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.220; cc_entrypoint=cli; cch=00000;"},{"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."},{"type":"text","text":"Return a short title."}],"tools":[],"metadata":{"user_id":` + string(encodedUserID) + `},"max_tokens":32000,"thinking":{"type":"disabled"},"temperature":1,"output_config":{"format":{"type":"json_schema","schema":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"],"additionalProperties":false}}},"stream":true}`)
 }
 
-func measuredClaudeCodeTitleHeaders() http.Header {
-	return http.Header{
-		"User-Agent":     {"claude-cli/2.1.241 (external, sdk-cli)"},
-		"X-App":          {"cli"},
-		"Anthropic-Beta": {"claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,structured-outputs-2025-12-15"},
-	}
-}
-
-func measuredClaudeCodeTitlePayload() []byte {
-	encodedUserID, _ := json.Marshal(validClaudeCodeMetadataUserID)
-	return []byte(`{"model":"claude-opus-5","messages":[{"role":"user","content":[{"type":"text","text":"<session>name this</session>"}]}],"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.241.37e; cc_entrypoint=sdk-cli;"},{"type":"text","text":"You are a Claude agent, built on Anthropic's Claude Agent SDK."},{"type":"text","text":"` + claudeCodeTitleInstructionPrefix + ` Return JSON."}],"tools":[],"metadata":{"user_id":` + string(encodedUserID) + `},"max_tokens":64000,"thinking":{"type":"disabled"},"output_config":{"effort":"high","format":{"type":"json_schema","schema":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"],"additionalProperties":false}}},"stream":true}`)
-}
-
-func measuredClaudeCodeTitleConfig() *config.Config {
-	return &config.Config{ClaudeHeaderDefaults: config.ClaudeHeaderDefaults{
-		UserAgent:      "claude-cli/2.1.241 (external, sdk-cli)",
-		PackageVersion: "0.112.1",
-		RuntimeVersion: "v26.3.0",
-	}}
-}
-
 func TestDetectClaudeCodeRequestRequiresAllFourMessageSignals(t *testing.T) {
 	payload := claudeCodeDetectionPayload(validClaudeCodeMetadataUserID)
 	detection := DetectClaudeCodeRequest(confirmedClaudeCodeHeaders(), payload, false)
@@ -247,75 +226,6 @@ func TestDetectClaudeCodeRequestRecognizesMeasuredHaikuHelpers(t *testing.T) {
 			}
 			if detection.BetasPresent {
 				t.Fatalf("claude-code beta signal = true, want helper profile to remain separate: %#v", detection)
-			}
-		})
-	}
-}
-
-func TestDetectClaudeCodeRequestRecognizesCurrentTitleShape(t *testing.T) {
-	payload := measuredClaudeCodeTitlePayload()
-	detection := DetectClaudeCodeRequest(measuredClaudeCodeTitleHeaders(), payload, false, measuredClaudeCodeTitleConfig())
-	if !detection.Confirmed || !detection.NativeClient || !detection.StrongSignals {
-		t.Fatalf("detection = %#v, want confirmed native title request", detection)
-	}
-	if !detection.TitleRequest || detection.HelperProfile {
-		t.Fatalf("detection = %#v, want title request separate from legacy helper", detection)
-	}
-
-	// The request kind must not depend on the selected model or serialized body
-	// length. These mutations keep the title protocol shape while changing both.
-	variant := strings.Replace(string(payload), `"claude-opus-5"`, `"claude-sonnet-4-6"`, 1)
-	variant = strings.Replace(variant, `"<session>name this</session>"`, `"`+strings.Repeat("x", 240)+`"`, 1)
-	variantDetection := DetectClaudeCodeRequest(measuredClaudeCodeTitleHeaders(), []byte(variant), false, measuredClaudeCodeTitleConfig())
-	if !variantDetection.TitleRequest || !variantDetection.Confirmed {
-		t.Fatalf("variant detection = %#v, want confirmed title request", variantDetection)
-	}
-}
-
-func TestDetectClaudeCodeRequestKeepsTitleNearMissAsMainRequest(t *testing.T) {
-	base := string(measuredClaudeCodeTitlePayload())
-	for _, test := range []struct {
-		name   string
-		mutate func(string) string
-	}{
-		{
-			name: "ordinary system instruction",
-			mutate: func(value string) string {
-				return strings.Replace(value, claudeCodeTitleInstructionPrefix, "You are answering the user's request.", 1)
-			},
-		},
-		{
-			name: "tool present",
-			mutate: func(value string) string {
-				return strings.Replace(value, `"tools":[]`, `"tools":[{"name":"read_file"}]`, 1)
-			},
-		},
-		{
-			name: "non-title schema",
-			mutate: func(value string) string {
-				return strings.Replace(value, `"properties":{"title":{"type":"string"}}`, `"properties":{"answer":{"type":"string"}}`, 1)
-			},
-		},
-		{
-			name: "additional schema property",
-			mutate: func(value string) string {
-				return strings.Replace(value, `"properties":{"title":{"type":"string"}}`, `"properties":{"title":{"type":"string"},"format":{"type":"string"}}`, 1)
-			},
-		},
-		{
-			name: "non-json schema format",
-			mutate: func(value string) string {
-				return strings.Replace(value, `"type":"json_schema"`, `"type":"text"`, 1)
-			},
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			detection := DetectClaudeCodeRequest(measuredClaudeCodeTitleHeaders(), []byte(test.mutate(base)), false, measuredClaudeCodeTitleConfig())
-			if detection.TitleRequest {
-				t.Fatalf("detection = %#v, want title request false", detection)
-			}
-			if !detection.Confirmed {
-				t.Fatalf("detection = %#v, want ordinary native request to remain confirmed", detection)
 			}
 		})
 	}

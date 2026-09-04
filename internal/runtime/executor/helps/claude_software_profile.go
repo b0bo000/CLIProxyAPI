@@ -33,7 +33,6 @@ type ResolvedClaudeSoftwareProfile struct {
 	Confirmed       bool
 	Provenance      ClaudeSoftwareProfileProvenance
 	helperProfile   bool
-	titleRequest    bool
 }
 
 type claudeSoftwareProfileRequestError struct {
@@ -76,14 +75,6 @@ func (p ResolvedClaudeSoftwareProfile) IsHelperProfile() bool {
 	return p.helperProfile
 }
 
-// IsTitleRequest reports whether the request was classified as the native
-// session-title helper. It is kept separate from IsHelperProfile because the
-// title request has the regular native transport envelope and must not inherit
-// the legacy helper's compression or beta rules.
-func (p ResolvedClaudeSoftwareProfile) IsTitleRequest() bool {
-	return p.titleRequest
-}
-
 // ResolveClaudeSoftwareProfile resolves one request's software identity. The
 // configuredCLI argument is an internal policy result, never a value derived
 // from an HTTP header, session ID, credential or request body.
@@ -108,7 +99,6 @@ func ResolveClaudeSoftwareProfile(
 		Confirmed:     detection.Confirmed,
 		Provenance:    ClaudeSoftwareProfileUnknown,
 		helperProfile: detection.HelperProfile,
-		titleRequest:  detection.TitleRequest,
 	}
 
 	if detection.Confirmed {
