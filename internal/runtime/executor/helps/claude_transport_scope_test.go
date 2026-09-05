@@ -88,3 +88,75 @@ func TestCachedClaudeCodeRoundTripperNilAuthRetainsProxyCompatibility(t *testing
 		t.Fatal("nil-auth compatibility lookup did not reuse proxy transport")
 	}
 }
+
+func TestCachedClaudeCodeRoundTripperScopesOwner(t *testing.T) {
+	t.Parallel()
+
+	proxyURL := "http://127.0.0.1:29658"
+	auth := &cliproxyauth.Auth{ID: "transport-owner"}
+	firstOwner := NewClaudeCodeTransportOwner()
+	secondOwner := NewClaudeCodeTransportOwner()
+	firstToken, ok := claudeCodeTransportOwnerFromContext(WithClaudeCodeTransportOwner(t.Context(), firstOwner))
+	if !ok {
+		t.Fatal("first owner was not extracted")
+	}
+	secondToken, ok := claudeCodeTransportOwnerFromContext(WithClaudeCodeTransportOwner(t.Context(), secondOwner))
+	if !ok {
+		t.Fatal("second owner was not extracted")
+	}
+
+	first := cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, auth, firstToken)
+	if reused := cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, auth.Clone(), firstToken); reused != first {
+		t.Fatal("same credential, proxy, and owner did not reuse transport")
+	}
+	if isolated := cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, auth, secondToken); isolated == first {
+		t.Fatal("different owners unexpectedly reused transport")
+	}
+	if fallback := cachedClaudeCodeRoundTripperForAuth(proxyURL, auth); fallback == first {
+		t.Fatal("owner-scoped transport unexpectedly reused ownerless transport")
+	}
+}
+
+func TestNewUtlsHTTPClientCarriesOwnerIntoClaudeTransportCache(t *testing.T) {
+	t.Parallel()
+
+	proxyURL := "http://127.0.0.1:29659"
+	auth := &cliproxyauth.Auth{ID: "client-owner"}
+	firstOwner := NewClaudeCodeTransportOwner()
+	secondOwner := NewClaudeCodeTransportOwner()
+	firstCtx := WithClaudeCodeTransportOwner(t.Context(), firstOwner)
+	secondCtx := WithClaudeCodeTransportOwner(t.Context(), secondOwner)
+	firstClient := NewUtlsHTTPClient(firstCtx, nil, &cliproxyauth.Auth{ID: auth.ID, ProxyURL: proxyURL}, 0)
+	reusedClient := NewUtlsHTTPClient(firstCtx, nil, &cliproxyauth.Auth{ID: auth.ID, ProxyURL: proxyURL}, 0)
+	isolatedClient := NewUtlsHTTPClient(secondCtx, nil, &cliproxyauth.Auth{ID: auth.ID, ProxyURL: proxyURL}, 0)
+
+	first := firstClient.Transport.(*fallbackRoundTripper).anthropic
+	if reused := reusedClient.Transport.(*fallbackRoundTripper).anthropic; reused != first {
+		t.Fatal("same owner context did not reuse Claude transport")
+	}
+	if isolated := isolatedClient.Transport.(*fallbackRoundTripper).anthropic; isolated == first {
+		t.Fatal("different owner contexts unexpectedly reused Claude transport")
+	}
+}
+
+func TestCachedClaudeCodeRoundTripperScopesNilAuthOwner(t *testing.T) {
+	t.Parallel()
+
+	proxyURL := "http://127.0.0.1:29660"
+	firstToken, ok := claudeCodeTransportOwnerFromContext(WithClaudeCodeTransportOwner(t.Context(), NewClaudeCodeTransportOwner()))
+	if !ok {
+		t.Fatal("first owner was not extracted")
+	}
+	secondToken, ok := claudeCodeTransportOwnerFromContext(WithClaudeCodeTransportOwner(t.Context(), NewClaudeCodeTransportOwner()))
+	if !ok {
+		t.Fatal("second owner was not extracted")
+	}
+
+	first := cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, nil, firstToken)
+	if reused := cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, nil, firstToken); reused != first {
+		t.Fatal("same owner and nil auth did not reuse transport")
+	}
+	if isolated := cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, nil, secondToken); isolated == first {
+		t.Fatal("different owners with nil auth unexpectedly reused transport")
+	}
+}

@@ -283,11 +283,15 @@ func claudeCodeRequestHeaderOrder(_, requestTarget string) []string {
 }
 
 func cachedClaudeCodeRoundTripper(proxyURL string) http.RoundTripper {
-	return cachedClaudeCodeRoundTripperForAuth(proxyURL, nil)
+	return cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, nil, nil)
 }
 
 func cachedClaudeCodeRoundTripperForAuth(proxyURL string, auth *cliproxyauth.Auth) http.RoundTripper {
-	key, cacheable := claudeCodeTransportCacheKeyForAuth(proxyURL, auth)
+	return cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, auth, nil)
+}
+
+func cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL string, auth *cliproxyauth.Auth, owner *claudeCodeTransportOwnerToken) http.RoundTripper {
+	key, cacheable := claudeCodeTransportCacheKeyForAuthAndOwner(proxyURL, auth, owner)
 	if !cacheable {
 		return newClaudeCodeRoundTripper(proxyURL)
 	}
@@ -389,7 +393,8 @@ func NewUtlsHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyau
 	}
 
 	var chromeRT http.RoundTripper = newUtlsRoundTripper(proxyURL)
-	var anthropicRT http.RoundTripper = cachedClaudeCodeRoundTripperForAuth(proxyURL, auth)
+	owner, _ := claudeCodeTransportOwnerFromContext(ctx)
+	var anthropicRT http.RoundTripper = cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, auth, owner)
 	var standardTransport http.RoundTripper = http.DefaultTransport
 	if proxyURL != "" {
 		if transport := buildProxyTransport(proxyURL); transport != nil {

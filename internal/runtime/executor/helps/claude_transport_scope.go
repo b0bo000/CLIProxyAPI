@@ -11,6 +11,7 @@ import (
 type claudeCodeTransportCacheKey struct {
 	ProxyURL        string
 	CredentialScope string
+	OwnerScope      *claudeCodeTransportOwnerToken
 }
 
 // claudeCodeTransportCredentialScope returns an opaque, stable cache scope for
@@ -24,8 +25,8 @@ func claudeCodeTransportCredentialScope(auth *cliproxyauth.Auth) (string, bool) 
 	return hex.EncodeToString(sum[:]), true
 }
 
-func claudeCodeTransportCacheKeyForAuth(proxyURL string, auth *cliproxyauth.Auth) (claudeCodeTransportCacheKey, bool) {
-	key := claudeCodeTransportCacheKey{ProxyURL: proxyURL}
+func claudeCodeTransportCacheKeyForAuthAndOwner(proxyURL string, auth *cliproxyauth.Auth, owner *claudeCodeTransportOwnerToken) (claudeCodeTransportCacheKey, bool) {
+	key := claudeCodeTransportCacheKey{ProxyURL: proxyURL, OwnerScope: owner}
 	if auth == nil {
 		return key, true
 	}
@@ -35,4 +36,8 @@ func claudeCodeTransportCacheKeyForAuth(proxyURL string, auth *cliproxyauth.Auth
 	}
 	key.CredentialScope = scope
 	return key, true
+}
+
+func claudeCodeTransportCacheKeyForAuth(proxyURL string, auth *cliproxyauth.Auth) (claudeCodeTransportCacheKey, bool) {
+	return claudeCodeTransportCacheKeyForAuthAndOwner(proxyURL, auth, nil)
 }
