@@ -47,23 +47,23 @@
 
 ## Implementation Record
 
-- Commit(s): pending
-- Files changed: pending
+- Commit(s): `5949f9da` (`feat(claude): add trusted transport owner provider boundary`)
+- Files changed: `sdk/cliproxy/auth/conductor.go`, `sdk/cliproxy/auth/conductor_execution.go`, `sdk/cliproxy/auth/conductor_selection.go`, `sdk/cliproxy/auth/conductor_owner_provider_test.go`, `sdk/cliproxy/builder.go`
 - Default behavior preserved: yes; provider is nil unless explicitly installed
 - Experimental flag/config: none; installation is an embedding API, not a production default
-- Secrets scan result: pending
+- Secrets scan result: 0 matches
 
 ## Rollback
 
 - Rollback command: `bash artifacts/CPA-CLAUDECODE-T2C-OWNER-PROVIDER-INTEGRATION-20260905/ROLLBACK.sh <test-copy> <artifact-directory>`
-- Separate-copy rollback test: pending
-- Restored hash/status: pending
+- Separate-copy rollback test: `cpa-t2c-rollback-test2`, exit 0
+- Restored hash/status: baseline `bd4cb753`, clean detached worktree
 
 ## Review Decision
 
-- CI run URL / run ID: pending
-- Evidence classification after change: pending; remains `VISIBLE_CONFOUNDED` until a trusted host actually installs the provider
-- `FIRST-READ` updated: pending
+- CI run URL / run ID: pending; local Go tests intentionally not run under CI-only validation policy
+- Evidence classification after change: remains `VISIBLE_CONFOUNDED` until a trusted host actually installs the provider
+- `FIRST-READ` updated: section 94
 - `STRICT-MATRIX` updated: pending
 - Release eligible: no
 - Reviewer: pending
