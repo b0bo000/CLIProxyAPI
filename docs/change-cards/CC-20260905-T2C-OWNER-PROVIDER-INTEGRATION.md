@@ -61,7 +61,7 @@
 
 ## Review Decision
 
-- CI run URL / run ID: `pr-test-build` 33965627193 (success), `claude-prompt-state-test` 33965627192 (success), `translator-path-guard` 33965627218 (success); `agents-md-guard` 33965627053 intentionally rejected the PR because the feature history includes an `AGENTS.md` difference
+- CI run URL / run ID: final branch `ab5188d7`: `pr-test-build` 33965822140 (success), `claude-prompt-state-test` 33965822035 (success), `translator-path-guard` 33965822011 (success); `agents-md-guard` 33965822350 intentionally rejected PR #4 because the feature history includes an `AGENTS.md` difference
 - Evidence classification after change: remains `VISIBLE_CONFOUNDED` until a trusted host actually installs the provider
 - `FIRST-READ` updated: section 94
 - `STRICT-MATRIX` updated: pending
