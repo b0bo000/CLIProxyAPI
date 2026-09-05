@@ -30,6 +30,15 @@ type ProviderExecutor interface {
 	HttpRequest(ctx context.Context, auth *Auth, req *http.Request) (*http.Response, error)
 }
 
+// ClaudeCodeTransportOwnerProvider is implemented by a trusted embedding host
+// that owns downstream process lifetimes. It must return a context carrying the
+// same opaque owner for every request from one downstream instance and leave the
+// context unchanged when that boundary is unknown. Implementations must not
+// infer ownership from caller-controlled request data.
+type ClaudeCodeTransportOwnerProvider interface {
+	BindClaudeCodeTransportOwner(context.Context) context.Context
+}
+
 // RequestAuthPreparer lets an executor update missing auth metadata immediately
 // before a request. Manager serializes and persists returned updates.
 type RequestAuthPreparer interface {
@@ -156,6 +165,8 @@ type Manager struct {
 
 	// Optional HTTP RoundTripper provider injected by host.
 	rtProvider RoundTripperProvider
+	// Optional trusted owner provider injected by an embedding host.
+	claudeCodeTransportOwnerProvider ClaudeCodeTransportOwnerProvider
 
 	// Auto refresh state
 	refreshCancel context.CancelFunc

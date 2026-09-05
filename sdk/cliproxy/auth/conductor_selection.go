@@ -316,6 +316,17 @@ func (m *Manager) SetRoundTripperProvider(p RoundTripperProvider) {
 	m.mu.Unlock()
 }
 
+// SetClaudeCodeTransportOwnerProvider installs an optional trusted owner
+// boundary. A nil provider restores the ownerless compatibility behavior.
+func (m *Manager) SetClaudeCodeTransportOwnerProvider(p ClaudeCodeTransportOwnerProvider) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.claudeCodeTransportOwnerProvider = p
+	m.mu.Unlock()
+}
+
 func (m *Manager) availableAuthsForRouteModel(auths []*Auth, provider, routeModel string, now time.Time) ([]*Auth, error) {
 	return m.availableAuthsForRouteModelWithPriorityMode(auths, provider, routeModel, now, false)
 }

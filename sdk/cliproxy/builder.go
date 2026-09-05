@@ -59,6 +59,9 @@ type Builder struct {
 
 	// serverOptions contains additional server configuration options.
 	serverOptions []api.ServerOption
+
+	// claudeCodeTransportOwnerProvider is an optional trusted embedding boundary.
+	claudeCodeTransportOwnerProvider coreauth.ClaudeCodeTransportOwnerProvider
 }
 
 // Hooks allows callers to plug into service lifecycle stages.
@@ -186,6 +189,13 @@ func (b *Builder) WithPostAuthHook(hook coreauth.PostAuthHook) *Builder {
 	return b
 }
 
+// WithClaudeCodeTransportOwnerProvider installs a trusted downstream owner
+// provider. The default builder remains ownerless for compatibility.
+func (b *Builder) WithClaudeCodeTransportOwnerProvider(provider coreauth.ClaudeCodeTransportOwnerProvider) *Builder {
+	b.claudeCodeTransportOwnerProvider = provider
+	return b
+}
+
 // Build validates inputs, applies defaults, and returns a ready-to-run service.
 func (b *Builder) Build() (*Service, error) {
 	if b.cfg == nil {
@@ -258,6 +268,7 @@ func (b *Builder) Build() (*Service, error) {
 	}
 	// Attach a default RoundTripper provider so providers can opt-in per-auth transports.
 	coreManager.SetRoundTripperProvider(newDefaultRoundTripperProvider())
+	coreManager.SetClaudeCodeTransportOwnerProvider(b.claudeCodeTransportOwnerProvider)
 	coreManager.SetConfig(b.cfg)
 	coreManager.SetOAuthModelAlias(b.cfg.OAuthModelAlias)
 	if pluginHost != nil {

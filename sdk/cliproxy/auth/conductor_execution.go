@@ -27,6 +27,38 @@ func newUpstreamAttemptContext(ctx context.Context) context.Context {
 	return logging.WithFreshResponseHeadersHolder(ctx)
 }
 
+func (m *Manager) bindClaudeCodeTransportOwner(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if m == nil {
+		return ctx
+	}
+	m.mu.RLock()
+	provider := m.claudeCodeTransportOwnerProvider
+	m.mu.RUnlock()
+	if provider == nil {
+		return ctx
+	}
+	bound := provider.BindClaudeCodeTransportOwner(ctx)
+	if bound == nil {
+		return ctx
+	}
+	return bound
+}
+
+func (m *Manager) bindClaudeCodeTransportOwnerForProviders(ctx context.Context, providers []string) context.Context {
+	for _, provider := range providers {
+		if strings.EqualFold(strings.TrimSpace(provider), "claude") {
+			return m.bindClaudeCodeTransportOwner(ctx)
+		}
+	}
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
 func claudeOAuthRequestCancellation(ctx context.Context, auth *Auth, err error) error {
 	if auth == nil || !strings.EqualFold(strings.TrimSpace(auth.Provider), "claude") || !strings.EqualFold(strings.TrimSpace(auth.Attributes["auth_kind"]), "oauth") {
 		return nil
@@ -43,6 +75,7 @@ func claudeOAuthRequestCancellation(ctx context.Context, auth *Auth, err error) 
 // Execute performs a non-streaming execution using the configured selector and executor.
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
+	ctx = m.bindClaudeCodeTransportOwnerForProviders(ctx, providers)
 	req, opts = cliproxysession.Enrich(req, opts)
 	normalized := m.normalizeProviders(providers)
 	if len(normalized) == 0 {
@@ -90,6 +123,7 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
+	ctx = m.bindClaudeCodeTransportOwnerForProviders(ctx, providers)
 	req, opts = cliproxysession.Enrich(req, opts)
 	normalized := m.normalizeProviders(providers)
 	if len(normalized) == 0 {
@@ -130,6 +164,7 @@ func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req clip
 // ExecuteStream performs a streaming execution using the configured selector and executor.
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (*cliproxyexecutor.StreamResult, error) {
+	ctx = m.bindClaudeCodeTransportOwnerForProviders(ctx, providers)
 	req, opts = cliproxysession.Enrich(req, opts)
 	if m.HomeEnabled() {
 		if unlockSession := m.lockHomeWebsocketSession(ctx, opts); unlockSession != nil {
@@ -1640,6 +1675,9 @@ func (m *Manager) InjectCredentials(req *http.Request, authID string) error {
 
 // PrepareHttpRequest injects provider credentials into the supplied HTTP request.
 func (m *Manager) PrepareHttpRequest(ctx context.Context, auth *Auth, req *http.Request) error {
+	if auth != nil && strings.EqualFold(executorKeyFromAuth(auth), "claude") {
+		ctx = m.bindClaudeCodeTransportOwner(ctx)
+	}
 	if m == nil {
 		return &Error{Code: "provider_not_found", Message: "manager is nil"}
 	}
@@ -1695,6 +1733,9 @@ func (m *Manager) NewHttpRequest(ctx context.Context, auth *Auth, method, target
 
 // HttpRequest injects provider credentials into the supplied HTTP request and executes it.
 func (m *Manager) HttpRequest(ctx context.Context, auth *Auth, req *http.Request) (*http.Response, error) {
+	if auth != nil && strings.EqualFold(executorKeyFromAuth(auth), "claude") {
+		ctx = m.bindClaudeCodeTransportOwner(ctx)
+	}
 	if m == nil {
 		return nil, &Error{Code: "provider_not_found", Message: "manager is nil"}
 	}
