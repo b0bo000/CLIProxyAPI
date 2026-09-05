@@ -1003,6 +1003,15 @@ func applyClaudeHeadersWithResolvedProfile(
 			}
 		}
 	}
+	// Anthropic enables the diagnostics request field only when the matching
+	// protocol beta is present. A confirmed Claude Code caller using a custom
+	// base URL cannot know that CPA later injects diagnostics, so its incoming
+	// beta list may be internally consistent yet incomplete for the final body.
+	// Restore only this body-coupled capability at the real Anthropic Messages
+	// boundary; count_tokens and custom upstreams retain caller ownership.
+	if isAnthropicBase && !countTokens && gjson.GetBytes(body, "diagnostics").IsObject() {
+		appendBeta(claudeCacheDiagnosisBeta)
+	}
 	applyBetaHeader := func() {
 		if strings.TrimSpace(baseBetas) == "" {
 			r.Header.Del("Anthropic-Beta")
