@@ -49,7 +49,7 @@
 
 - Commit(s): `5949f9da` (`feat(claude): add trusted transport owner provider boundary`)
 - Files changed: `sdk/cliproxy/auth/conductor.go`, `sdk/cliproxy/auth/conductor_execution.go`, `sdk/cliproxy/auth/conductor_selection.go`, `sdk/cliproxy/auth/conductor_owner_provider_test.go`, `sdk/cliproxy/builder.go`
-- Default behavior preserved: yes; provider is nil unless explicitly installed
+- Default behavior preserved: yes; provider is installed only when explicitly non-nil, so a custom core manager is not cleared by Builder defaults
 - Experimental flag/config: none; installation is an embedding API, not a production default
 - Secrets scan result: 0 matches
 

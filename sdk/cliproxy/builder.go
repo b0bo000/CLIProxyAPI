@@ -268,7 +268,9 @@ func (b *Builder) Build() (*Service, error) {
 	}
 	// Attach a default RoundTripper provider so providers can opt-in per-auth transports.
 	coreManager.SetRoundTripperProvider(newDefaultRoundTripperProvider())
-	coreManager.SetClaudeCodeTransportOwnerProvider(b.claudeCodeTransportOwnerProvider)
+	if b.claudeCodeTransportOwnerProvider != nil {
+		coreManager.SetClaudeCodeTransportOwnerProvider(b.claudeCodeTransportOwnerProvider)
+	}
 	coreManager.SetConfig(b.cfg)
 	coreManager.SetOAuthModelAlias(b.cfg.OAuthModelAlias)
 	if pluginHost != nil {
