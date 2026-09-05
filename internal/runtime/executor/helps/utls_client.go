@@ -217,9 +217,9 @@ func claudeCodeTLSClientHelloSpec() *tls.ClientHelloSpec {
 
 const claudeCodeRoundTripperCacheCapacity = 64
 
-var claudeCodeRoundTripperCache = internalcache.NewBoundedLRU[string, http.RoundTripper](
+var claudeCodeRoundTripperCache = internalcache.NewBoundedLRU[claudeCodeTransportCacheKey, http.RoundTripper](
 	claudeCodeRoundTripperCacheCapacity,
-	func(_ string, roundTripper http.RoundTripper) {
+	func(_ claudeCodeTransportCacheKey, roundTripper http.RoundTripper) {
 		if transport, ok := roundTripper.(interface{ CloseIdleConnections() }); ok {
 			transport.CloseIdleConnections()
 		}
@@ -283,7 +283,15 @@ func claudeCodeRequestHeaderOrder(_, requestTarget string) []string {
 }
 
 func cachedClaudeCodeRoundTripper(proxyURL string) http.RoundTripper {
-	return claudeCodeRoundTripperCache.GetOrAdd(proxyURL, func() http.RoundTripper {
+	return cachedClaudeCodeRoundTripperForAuth(proxyURL, nil)
+}
+
+func cachedClaudeCodeRoundTripperForAuth(proxyURL string, auth *cliproxyauth.Auth) http.RoundTripper {
+	key, cacheable := claudeCodeTransportCacheKeyForAuth(proxyURL, auth)
+	if !cacheable {
+		return newClaudeCodeRoundTripper(proxyURL)
+	}
+	return claudeCodeRoundTripperCache.GetOrAdd(key, func() http.RoundTripper {
 		return newClaudeCodeRoundTripper(proxyURL)
 	})
 }
@@ -381,7 +389,7 @@ func NewUtlsHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyau
 	}
 
 	var chromeRT http.RoundTripper = newUtlsRoundTripper(proxyURL)
-	var anthropicRT http.RoundTripper = cachedClaudeCodeRoundTripper(proxyURL)
+	var anthropicRT http.RoundTripper = cachedClaudeCodeRoundTripperForAuth(proxyURL, auth)
 	var standardTransport http.RoundTripper = http.DefaultTransport
 	if proxyURL != "" {
 		if transport := buildProxyTransport(proxyURL); transport != nil {
