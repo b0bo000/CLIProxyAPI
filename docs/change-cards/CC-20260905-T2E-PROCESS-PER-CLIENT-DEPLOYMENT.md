@@ -7,7 +7,7 @@
 - Branch: `feat/s3-resolved-profile`
 - Baseline: `571fba46`
 - Date: 2026-09-05
-- Status: `DEPLOYMENT_CONTRACT_ADDED_NO_PRODUCTION_CHANGE`
+- Status: `IMPLEMENTED_AND_LOCALLY_VERIFIED_NO_PRODUCTION_CHANGE`
 
 ## Change
 
@@ -37,3 +37,8 @@ state-isolation rules. The existing default compose file is untouched.
 ## Evidence
 
 `artifacts/CPA-CLAUDECODE-T2E-PROCESS-PER-CLIENT-20260905/`
+
+## 2026-09-08 verification update
+
+Static compose/contract assertions passed with two services, two distinct host ports, separate client-a/client-b state roots, and the documented session pinning/restart rules. Independent rollback-copy equality passed. The verified artifact is rtifacts/CPA-CLAUDECODE-T2E-PROCESS-PER-CLIENT-20260908/. No production deployment occurred.
+
