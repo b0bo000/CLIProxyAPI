@@ -6,7 +6,7 @@ This document is the operating index for maintaining the private CLIProxyAPI for
 
 The current factual baseline is:
 
-`C:\Users\Administrator\gpt-5.6-instruct\artifacts\CPA-ClaudeCode-FIRST-READ-20260825\MODIFIED_FILE.md`
+`C:\Users\Administrator\gpt-5.6-instruct\artifacts\CPA-CLAUDECODE-DOCS-20260829\00-FIRST-READ.md`
 
 Read it before every experiment, analysis, report, or source change. It records the active version pair, A/B definitions, evidence boundaries, confounders, and the current production conclusion. The current conclusion is `NOT STRICTLY EQUIVALENT`; this is a release-state statement, not proof that every request is wrong or that a later account event was caused by CPA.
 
@@ -89,4 +89,8 @@ Before a release claim, update the baseline and matrix, link all cards and CI ru
 
 ## Current Starting Point
 
-The current development starting point is `feat/transport-scope`. It contains maintenance rules only; no transport behavior has been changed. The next compatibility implementation must begin with a new change card and focused design/tests, then proceed through GitHub Actions. No source edit should begin merely because a report lists a difference.
+The current development starting point is `feat/s6b-404-recovery`. It contains
+the validated S6 audit cards, the opt-in S7 TLS session policy, and the S8 CI /
+release packaging gate. `main` and immutable baselines remain untouched. New
+compatibility behavior must begin with a new change card and focused tests; no
+source edit should begin merely because a report lists a difference.
