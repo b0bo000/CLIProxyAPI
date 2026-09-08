@@ -5,6 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+$commit = (git rev-parse HEAD).Trim()
 if ($branch -notlike "release/*") {
     throw "release preflight requires a release/* branch; current branch is '$branch'"
 }
@@ -31,4 +32,5 @@ foreach ($path in $required) {
 
 Write-Output "RELEASE_PREFLIGHT=PASS"
 Write-Output "BRANCH=$branch"
+Write-Output "COMMIT=$commit"
 Write-Output "MANIFEST=$Manifest"

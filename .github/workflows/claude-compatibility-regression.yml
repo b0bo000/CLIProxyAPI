@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 env:
-  BASELINE_REF: 4504e4ee0926190f20582185c65e3a081fba58ee
+  BASELINE_REF: 586e4360bf655d7d6e22287aeda3cc4750f2fecf
 
 jobs:
   focused-regression:

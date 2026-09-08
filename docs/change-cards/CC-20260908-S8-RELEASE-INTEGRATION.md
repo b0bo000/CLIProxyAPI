@@ -4,7 +4,7 @@
 
 - Signal group: S6/S7 integration gate and release traceability
 - Branch: `feat/s6b-404-recovery`
-- Baseline commit: `4504e4ee`
+- Baseline commit: `586e4360` (parent of the S7 behavior commit)
 - Date: 2026-09-08
 - Observation boundary: repository/CI configuration and deterministic focused tests
 
@@ -57,3 +57,7 @@ already-committed canonical change-control index
 workflow now includes that path in both pull-request triggers and the
 source-diff allowlist. This changes only release-gate coverage; no runtime or
 wire behavior changes.
+
+## 2026-09-08 baseline and commit-capture correction
+
+The workflow baseline now points to 586e4360bf655d7d6e22287aeda3cc4750f2fecf, the parent of S7, so CI exercises the S7 behavior delta instead of comparing two trees that already contain it. The preflight now emits COMMIT=<sha>; the manifest describes this external capture rather than embedding a self-referential commit hash. Runtime and wire behavior are unchanged.

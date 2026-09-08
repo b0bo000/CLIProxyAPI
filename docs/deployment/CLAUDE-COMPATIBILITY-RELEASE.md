@@ -11,8 +11,8 @@ It records what the code changes control and what the evidence does not prove.
 - Development branch: `feat/s6b-404-recovery`.
 - Release branch: `release/claude-compatibility-20260908` (local candidate; remote
   push and GitHub Actions run are still pending).
-- Candidate commit/tag: `f8b9466dda00850b9337b83cc20c5991c156918e`; do not deploy a
-  moving feature branch.
+- Candidate commit/tag: emitted by the preflight as `COMMIT=<sha>` and stored with
+  the release evidence; this avoids self-referential hashes when the manifest changes.
 
 ## Included validated scopes
 
@@ -39,9 +39,9 @@ headers, body fields, IDs, model/tools, OAuth, proxy, or control-plane TLS.
 Run `.github/workflows/claude-compatibility-regression.yml` and retain its
 artifact logs. The workflow runs baseline and modified focused tests, S6
 compact/count_tokens tests, S7 policy tests, and an allowed-path source diff
-guard. The local preflight passed on commit
-`f8b9466dda00850b9337b83cc20c5991c156918e`; no remote workflow run is
-claimed until a GitHub Actions run ID is available.
+guard. The local preflight emits the exact candidate commit; the evidence
+records the latest result. No remote workflow run is claimed until a GitHub
+Actions run ID is available.
 
 ## Open evidence boundaries
 
@@ -64,5 +64,3 @@ Preflight command:
 ```powershell
 ./scripts/verify-claude-compatibility-release.ps1
 ```
-
-
