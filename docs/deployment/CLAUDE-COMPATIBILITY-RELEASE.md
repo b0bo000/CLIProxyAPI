@@ -11,8 +11,9 @@ It records what the code changes control and what the evidence does not prove.
 - Development branch: `feat/s6b-404-recovery`.
 - Release branch: `release/claude-compatibility-20260908` (local candidate; remote
   push and GitHub Actions run are still pending).
-- Candidate commit/tag: emitted by the preflight as `COMMIT=<sha>` and stored with
-  the release evidence; this avoids self-referential hashes when the manifest changes.
+- Candidate commit/tag: the local guard-correction candidate is
+  `e254dd4eca87281cab3dcd5154a2715830f2db49`; the preflight still emits
+  `COMMIT=<sha>` for the exact release ref and stores it with release evidence.
 
 ## Included validated scopes
 
@@ -42,6 +43,12 @@ compact/count_tokens tests, S7 policy tests, and an allowed-path source diff
 guard. The local preflight emits the exact candidate commit; the evidence
 records the latest result. No remote workflow run is claimed until a GitHub
 Actions run ID is available.
+
+The S8 source-diff guard permits the historical `AGENTS.md` tree delta only
+when the file's blob matches the canonical fork-policy SHA-1
+`57027473d7b65be22e86a0ab2172c9a09a4e495d`; arbitrary policy-file edits still
+fail the gate. This is repository-guard plumbing and does not change CPA
+runtime or wire behavior.
 
 ## Open evidence boundaries
 
