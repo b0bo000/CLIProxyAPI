@@ -15,6 +15,7 @@ on:
       - "docs/change-cards/CC-20260908-S6D-COMPACT-529-RECOVERY.md"
       - "docs/change-cards/CC-20260908-S7-TLS-SESSION-POLICY.md"
       - "docs/change-cards/CC-20260908-S8-RELEASE-INTEGRATION.md"
+      - "docs/CPA-COMPATIBILITY-CHANGE-CONTROL.md"
       - ".github/workflows/claude-compatibility-regression.yml"
   workflow_dispatch:
 
@@ -73,9 +74,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          allowed='^(config\.example\.yaml|internal/config/claude_code_test\.go|internal/config/sdk_config\.go|internal/runtime/executor/helps/(claude_transport_scope|claude_transport_scope_test|utls_client|utls_client_test)\.go|internal/watcher/diff/config_diff(_test)?\.go|docs/change-cards/CC-20260908-(S6D-COMPACT-529-RECOVERY|S7-TLS-SESSION-POLICY|S8-RELEASE-INTEGRATION)\.md|\.github/workflows/claude-compatibility-regression\.yml|docs/deployment/CLAUDE-COMPATIBILITY-RELEASE\.md|scripts/verify-claude-compatibility-release\.ps1)$'
+          allowed='^(config\.example\.yaml|internal/config/claude_code_test\.go|internal/config/sdk_config\.go|internal/runtime/executor/helps/(claude_transport_scope|claude_transport_scope_test|utls_client|utls_client_test)\.go|internal/watcher/diff/config_diff(_test)?\.go|docs/change-cards/CC-20260908-(S6D-COMPACT-529-RECOVERY|S7-TLS-SESSION-POLICY|S8-RELEASE-INTEGRATION)\.md|\.github/workflows/claude-compatibility-regression\.yml|docs/deployment/CLAUDE-COMPATIBILITY-RELEASE\.md|docs/CPA-COMPATIBILITY-CHANGE-CONTROL\.md|scripts/verify-claude-compatibility-release\.ps1)$'
           git diff --name-only "$BASELINE_REF"...HEAD | while IFS= read -r path; do
-            [[ "$path" =~ $allowed ]] || { echo "unexpected compatibility diff: $path"; exit 1; }
+          [[ "$path" =~ $allowed ]] || { echo "unexpected compatibility diff: $path"; exit 1; }
           done
 
       - name: Upload focused logs

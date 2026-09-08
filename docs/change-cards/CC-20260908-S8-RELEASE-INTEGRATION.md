@@ -22,6 +22,8 @@ caller disguise, OAuth behavior, proxy behavior, or production deployment.
   open evidence boundaries, configuration defaults, and rollback procedure.
 - Add a local PowerShell preflight that refuses non-`release/*` deployment refs,
   dirty trees, or an omitted verification artifact.
+- Keep the canonical `docs/CPA-COMPATIBILITY-CHANGE-CONTROL.md` pointer in
+  the release diff allowlist and pull-request trigger paths.
 
 ## Prohibited changes
 
@@ -46,3 +48,12 @@ caller disguise, OAuth behavior, proxy behavior, or production deployment.
 S8 is a packaging and verification gate only. A deployment candidate still
 requires a separately created `release/*` branch, CI success, and an operator
 review of all remaining `UNTESTED`/`VISIBLE_CONFOUNDED` signals.
+
+## 2026-09-08 guard correction
+
+The first static allowlist check against baseline `4504e4ee` found the
+already-committed canonical change-control index
+(`docs/CPA-COMPATIBILITY-CHANGE-CONTROL.md`) outside the S8 regex. The
+workflow now includes that path in both pull-request triggers and the
+source-diff allowlist. This changes only release-gate coverage; no runtime or
+wire behavior changes.
