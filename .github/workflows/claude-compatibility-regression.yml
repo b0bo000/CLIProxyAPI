@@ -1,0 +1,86 @@
+name: claude-compatibility-regression
+
+on:
+  pull_request:
+    paths:
+      - "internal/config/sdk_config.go"
+      - "internal/config/claude_code_test.go"
+      - "internal/runtime/executor/helps/claude_transport_scope.go"
+      - "internal/runtime/executor/helps/claude_transport_scope_test.go"
+      - "internal/runtime/executor/helps/utls_client.go"
+      - "internal/runtime/executor/helps/utls_client_test.go"
+      - "internal/runtime/executor/claude_executor_*.go"
+      - "internal/watcher/diff/config_diff.go"
+      - "internal/watcher/diff/config_diff_test.go"
+      - "docs/change-cards/CC-20260908-S6D-COMPACT-529-RECOVERY.md"
+      - "docs/change-cards/CC-20260908-S7-TLS-SESSION-POLICY.md"
+      - "docs/change-cards/CC-20260908-S8-RELEASE-INTEGRATION.md"
+      - ".github/workflows/claude-compatibility-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BASELINE_REF: 4504e4ee0926190f20582185c65e3a081fba58ee
+
+jobs:
+  focused-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Baseline focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline="$RUNNER_TEMP/cpa-compat-baseline"
+          git worktree add --detach "$baseline" "$BASELINE_REF"
+          trap 'git worktree remove --force "$baseline"' EXIT
+          (
+            cd "$baseline"
+            go test -count=1 ./internal/config ./internal/runtime/executor/helps ./internal/watcher/diff
+            go test -count=1 ./internal/runtime/executor \
+              -run 'TestClaudeExecutor_CountTokens|TestClaudeExecutorPromptIDCompactBoundaryExcludedAndPostCompactRotates'
+            go test -count=1 ./sdk/cliproxy/auth \
+              -run 'TestManager_ResponsesCompact_|TestManagerClaudeUpstreamFailureStillCoolsCredential'
+          )
+
+      - name: Modified focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cpa-compat-results"
+          go test -count=1 ./internal/config ./internal/runtime/executor/helps ./internal/watcher/diff \
+            | tee "$RUNNER_TEMP/cpa-compat-results/focused.log"
+          go test -count=1 ./internal/runtime/executor \
+            -run 'TestClaudeExecutor_CountTokens|TestClaudeExecutorPromptIDCompactBoundaryExcludedAndPostCompactRotates' \
+            | tee "$RUNNER_TEMP/cpa-compat-results/executor.log"
+          go test -count=1 ./sdk/cliproxy/auth \
+            -run 'TestManager_ResponsesCompact_|TestManagerClaudeUpstreamFailureStillCoolsCredential' \
+            | tee "$RUNNER_TEMP/cpa-compat-results/manager.log"
+
+      - name: Source diff guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          allowed='^(config\.example\.yaml|internal/config/claude_code_test\.go|internal/config/sdk_config\.go|internal/runtime/executor/helps/(claude_transport_scope|claude_transport_scope_test|utls_client|utls_client_test)\.go|internal/watcher/diff/config_diff(_test)?\.go|docs/change-cards/CC-20260908-(S6D-COMPACT-529-RECOVERY|S7-TLS-SESSION-POLICY|S8-RELEASE-INTEGRATION)\.md|\.github/workflows/claude-compatibility-regression\.yml|docs/deployment/CLAUDE-COMPATIBILITY-RELEASE\.md|scripts/verify-claude-compatibility-release\.ps1)$'
+          git diff --name-only "$BASELINE_REF"...HEAD | while IFS= read -r path; do
+            [[ "$path" =~ $allowed ]] || { echo "unexpected compatibility diff: $path"; exit 1; }
+          done
+
+      - name: Upload focused logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-compatibility-regression-logs
+          path: ${{ runner.temp }}/cpa-compat-results
