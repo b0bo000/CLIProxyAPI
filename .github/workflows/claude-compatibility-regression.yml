@@ -74,9 +74,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          allowed='^(config\.example\.yaml|internal/config/claude_code_test\.go|internal/config/sdk_config\.go|internal/runtime/executor/helps/(claude_transport_scope|claude_transport_scope_test|utls_client|utls_client_test)\.go|internal/watcher/diff/config_diff(_test)?\.go|docs/change-cards/CC-20260908-(S6D-COMPACT-529-RECOVERY|S7-TLS-SESSION-POLICY|S8-RELEASE-INTEGRATION)\.md|\.github/workflows/claude-compatibility-regression\.yml|docs/deployment/CLAUDE-COMPATIBILITY-RELEASE\.md|docs/CPA-COMPATIBILITY-CHANGE-CONTROL\.md|scripts/verify-claude-compatibility-release\.ps1)$'
+          allowed='^(AGENTS\.md|config\.example\.yaml|internal/config/claude_code_test\.go|internal/config/sdk_config\.go|internal/runtime/executor/helps/(claude_transport_scope|claude_transport_scope_test|utls_client|utls_client_test)\.go|internal/watcher/diff/config_diff(_test)?\.go|docs/change-cards/CC-20260908-(S6D-COMPACT-529-RECOVERY|S7-TLS-SESSION-POLICY|S8-RELEASE-INTEGRATION)\.md|\.github/workflows/claude-compatibility-regression\.yml|docs/deployment/CLAUDE-COMPATIBILITY-RELEASE\.md|docs/CPA-COMPATIBILITY-CHANGE-CONTROL\.md|scripts/verify-claude-compatibility-release\.ps1)$'
+          expected_agents_blob='57027473d7b65be22e86a0ab2172c9a09a4e495d'
           git diff --name-only "$BASELINE_REF"...HEAD | while IFS= read -r path; do
           [[ "$path" =~ $allowed ]] || { echo "unexpected compatibility diff: $path"; exit 1; }
+          if [[ "$path" == "AGENTS.md" ]]; then
+            actual_agents_blob="$(git rev-parse HEAD:AGENTS.md)"
+            [[ "$actual_agents_blob" == "$expected_agents_blob" ]] || {
+              echo "AGENTS.md differs from the canonical fork policy blob"
+              exit 1
+            }
+          fi
           done
 
       - name: Upload focused logs

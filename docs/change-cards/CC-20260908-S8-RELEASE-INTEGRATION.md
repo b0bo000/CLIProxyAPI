@@ -61,3 +61,14 @@ wire behavior changes.
 ## 2026-09-08 baseline and commit-capture correction
 
 The workflow baseline now points to 586e4360bf655d7d6e22287aeda3cc4750f2fecf, the parent of S7, so CI exercises the S7 behavior delta instead of comparing two trees that already contain it. The preflight now emits COMMIT=<sha>; the manifest describes this external capture rather than embedding a self-referential commit hash. Runtime and wire behavior are unchanged.
+
+## 2026-09-08 AGENTS.md guard correction
+
+The fork's pull-request guard rejects arbitrary `AGENTS.md` changes. The
+release candidate restores that file to the canonical fork-policy blob, but the
+S8 diff baseline predates that restoration and therefore reports the file as a
+tree difference. The source-diff guard now permits `AGENTS.md` only when its
+blob exactly matches the canonical fork-policy SHA-1
+`57027473d7b65be22e86a0ab2172c9a09a4e495d`; any other edit still fails the gate.
+This preserves the repository policy and changes no CPA runtime or wire
+behavior.
