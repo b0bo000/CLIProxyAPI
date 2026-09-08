@@ -157,6 +157,14 @@ func newClaudeCodeTLSConfig(host string, sessionCache tls.ClientSessionCache) *t
 	}
 }
 
+func newClaudeCodeTLSConfigForPolicy(host string, tlsSessionResumption bool) *tls.Config {
+	var sessionCache tls.ClientSessionCache
+	if tlsSessionResumption {
+		sessionCache = tls.NewLRUClientSessionCache(claudeCodeSessionCacheCapacity)
+	}
+	return newClaudeCodeTLSConfig(host, sessionCache)
+}
+
 // claudeCodeTLSClientHelloSpec reproduces the deterministic Node/OpenSSL
 // ClientHello emitted by Claude Code 2.1.220 on macOS arm64. Keep this spec in
 // sync with a fresh native capture whenever the advertised Claude Code version
@@ -291,19 +299,27 @@ func cachedClaudeCodeRoundTripperForAuth(proxyURL string, auth *cliproxyauth.Aut
 }
 
 func cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL string, auth *cliproxyauth.Auth, owner *claudeCodeTransportOwnerToken) http.RoundTripper {
-	key, cacheable := claudeCodeTransportCacheKeyForAuthAndOwner(proxyURL, auth, owner)
+	return cachedClaudeCodeRoundTripperForAuthOwnerAndPolicy(proxyURL, auth, owner, true)
+}
+
+func cachedClaudeCodeRoundTripperForAuthOwnerAndPolicy(proxyURL string, auth *cliproxyauth.Auth, owner *claudeCodeTransportOwnerToken, tlsSessionResumption bool) http.RoundTripper {
+	key, cacheable := claudeCodeTransportCacheKeyForAuthOwnerAndPolicy(proxyURL, auth, owner, tlsSessionResumption)
 	if !cacheable {
-		return newClaudeCodeRoundTripper(proxyURL)
+		return newClaudeCodeRoundTripperWithPolicy(proxyURL, tlsSessionResumption)
 	}
 	return claudeCodeRoundTripperCache.GetOrAdd(key, func() http.RoundTripper {
-		return newClaudeCodeRoundTripper(proxyURL)
+		return newClaudeCodeRoundTripperWithPolicy(proxyURL, tlsSessionResumption)
 	})
 }
 
 func newClaudeCodeRoundTripper(proxyURL string) http.RoundTripper {
+	return newClaudeCodeRoundTripperWithPolicy(proxyURL, true)
+}
+
+func newClaudeCodeRoundTripperWithPolicy(proxyURL string, tlsSessionResumption bool) http.RoundTripper {
 	// The cache is scoped to this round tripper, which is already keyed by proxy,
 	// so resumption never crosses proxy boundaries.
-	sessionCache := tls.NewLRUClientSessionCache(claudeCodeSessionCacheCapacity)
+	sessionCache := newClaudeCodeTLSConfigForPolicy("api.anthropic.com", tlsSessionResumption).ClientSessionCache
 	var dialer proxy.Dialer = proxy.Direct
 	if proxyURL != "" {
 		proxyDialer, mode, errBuild := proxyutil.BuildDialer(proxyURL)
@@ -394,7 +410,8 @@ func NewUtlsHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyau
 
 	var chromeRT http.RoundTripper = newUtlsRoundTripper(proxyURL)
 	owner, _ := claudeCodeTransportOwnerFromContext(ctx)
-	var anthropicRT http.RoundTripper = cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, auth, owner)
+	tlsSessionResumption := ClaudeCodeTLSSessionResumptionEnabled(cfg)
+	var anthropicRT http.RoundTripper = cachedClaudeCodeRoundTripperForAuthOwnerAndPolicy(proxyURL, auth, owner, tlsSessionResumption)
 	var standardTransport http.RoundTripper = http.DefaultTransport
 	if proxyURL != "" {
 		if transport := buildProxyTransport(proxyURL); transport != nil {

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 )
 
@@ -158,5 +159,37 @@ func TestCachedClaudeCodeRoundTripperScopesNilAuthOwner(t *testing.T) {
 	}
 	if isolated := cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, nil, secondToken); isolated == first {
 		t.Fatal("different owners with nil auth unexpectedly reused transport")
+	}
+}
+
+func TestCachedClaudeCodeRoundTripperScopesTLSSessionPolicy(t *testing.T) {
+	t.Parallel()
+
+	proxyURL := "http://127.0.0.1:29661"
+	auth := &cliproxyauth.Auth{ID: "transport-policy"}
+	owner, ok := claudeCodeTransportOwnerFromContext(WithClaudeCodeTransportOwner(t.Context(), NewClaudeCodeTransportOwner()))
+	if !ok {
+		t.Fatal("owner was not extracted")
+	}
+	enabled := cachedClaudeCodeRoundTripperForAuthOwnerAndPolicy(proxyURL, auth, owner, true)
+	if reused := cachedClaudeCodeRoundTripperForAuthOwnerAndPolicy(proxyURL, auth.Clone(), owner, true); reused != enabled {
+		t.Fatal("same enabled policy did not reuse transport")
+	}
+	disabled := cachedClaudeCodeRoundTripperForAuthOwnerAndPolicy(proxyURL, auth, owner, false)
+	if disabled == enabled {
+		t.Fatal("enabled and disabled TLS policies unexpectedly shared transport")
+	}
+	if key, ok := claudeCodeTransportCacheKeyForAuthOwnerAndPolicy(proxyURL, auth, owner, true); !ok || !key.TLSSessionResumption {
+		t.Fatalf("enabled cache key = %#v/%v", key, ok)
+	}
+	if key, ok := claudeCodeTransportCacheKeyForAuthOwnerAndPolicy(proxyURL, auth, owner, false); !ok || key.TLSSessionResumption {
+		t.Fatalf("disabled cache key = %#v/%v", key, ok)
+	}
+	if !ClaudeCodeTLSSessionResumptionEnabled(&config.Config{}) {
+		t.Fatal("nil policy did not preserve enabled default")
+	}
+	disabledValue := false
+	if ClaudeCodeTLSSessionResumptionEnabled(&config.Config{SDKConfig: config.SDKConfig{ClaudeCode: config.ClaudeCodeConfig{TLSSessionResumption: &disabledValue}}}) {
+		t.Fatal("explicit false policy resolved as enabled")
 	}
 }

@@ -5,13 +5,24 @@ import (
 	"encoding/hex"
 	"strings"
 
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 )
 
 type claudeCodeTransportCacheKey struct {
-	ProxyURL        string
-	CredentialScope string
-	OwnerScope      *claudeCodeTransportOwnerToken
+	ProxyURL             string
+	CredentialScope      string
+	OwnerScope           *claudeCodeTransportOwnerToken
+	TLSSessionResumption bool
+}
+
+// ClaudeCodeTLSSessionResumptionEnabled resolves the optional inference-plane
+// policy. The nil default intentionally preserves the pre-S7 behavior.
+func ClaudeCodeTLSSessionResumptionEnabled(cfg *config.Config) bool {
+	if cfg == nil || cfg.ClaudeCode.TLSSessionResumption == nil {
+		return true
+	}
+	return *cfg.ClaudeCode.TLSSessionResumption
 }
 
 // claudeCodeTransportCredentialScope returns an opaque, stable cache scope for
@@ -26,7 +37,11 @@ func claudeCodeTransportCredentialScope(auth *cliproxyauth.Auth) (string, bool) 
 }
 
 func claudeCodeTransportCacheKeyForAuthAndOwner(proxyURL string, auth *cliproxyauth.Auth, owner *claudeCodeTransportOwnerToken) (claudeCodeTransportCacheKey, bool) {
-	key := claudeCodeTransportCacheKey{ProxyURL: proxyURL, OwnerScope: owner}
+	return claudeCodeTransportCacheKeyForAuthOwnerAndPolicy(proxyURL, auth, owner, true)
+}
+
+func claudeCodeTransportCacheKeyForAuthOwnerAndPolicy(proxyURL string, auth *cliproxyauth.Auth, owner *claudeCodeTransportOwnerToken, tlsSessionResumption bool) (claudeCodeTransportCacheKey, bool) {
+	key := claudeCodeTransportCacheKey{ProxyURL: proxyURL, OwnerScope: owner, TLSSessionResumption: tlsSessionResumption}
 	if auth == nil {
 		return key, true
 	}

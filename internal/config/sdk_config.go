@@ -67,6 +67,11 @@ type SDKConfig struct {
 type ClaudeCodeConfig struct {
 	// DisableCloakingModelList disables model ID cloaking in Anthropic model list responses.
 	DisableCloakingModelList bool `yaml:"disable-cloaking-model-list" json:"disable-cloaking-model-list"`
+
+	// TLSSessionResumption controls the Claude inference-plane TLS client-session
+	// cache. Nil preserves the existing enabled behavior; false disables
+	// resumption for controlled comparisons without changing the HTTP/body path.
+	TLSSessionResumption *bool `yaml:"tls-session-resumption,omitempty" json:"tls-session-resumption,omitempty"`
 }
 
 // StreamingConfig holds server streaming behavior configuration.
