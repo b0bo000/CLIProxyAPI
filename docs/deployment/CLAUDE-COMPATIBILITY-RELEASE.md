@@ -9,10 +9,10 @@ It records what the code changes control and what the evidence does not prove.
 
 - Audit baseline: Claude Code `2.1.241`, CPA `7.2.140`.
 - Development branch: `feat/s6b-404-recovery`.
-- Release branch: create `release/claude-compatibility-<date>` only after the
-  focused workflow succeeds.
-- Candidate commit/tag: recorded at release cut; do not deploy a moving feature
-  branch.
+- Release branch: `release/claude-compatibility-20260908` (local candidate; remote
+  push and GitHub Actions run are still pending).
+- Candidate commit/tag: `f8b9466dda00850b9337b83cc20c5991c156918e`; do not deploy a
+  moving feature branch.
 
 ## Included validated scopes
 
@@ -39,7 +39,9 @@ headers, body fields, IDs, model/tools, OAuth, proxy, or control-plane TLS.
 Run `.github/workflows/claude-compatibility-regression.yml` and retain its
 artifact logs. The workflow runs baseline and modified focused tests, S6
 compact/count_tokens tests, S7 policy tests, and an allowed-path source diff
-guard.
+guard. The local preflight passed on commit
+`f8b9466dda00850b9337b83cc20c5991c156918e`; no remote workflow run is
+claimed until a GitHub Actions run ID is available.
 
 ## Open evidence boundaries
 
@@ -62,3 +64,5 @@ Preflight command:
 ```powershell
 ./scripts/verify-claude-compatibility-release.ps1
 ```
+
+
