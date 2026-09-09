@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 )
 
 func TestCaptureClaudeUpstreamRequest(t *testing.T) {
@@ -158,5 +160,60 @@ func TestCaptureClaudeHTTPTraceMapsConnectionReuse(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(captureRoot, "000002", "08-final_roundtrip.json")); err != nil {
 		t.Fatalf("final roundtrip stage: %v", err)
+	}
+}
+
+type claudeCaptureIdentityRoundTripper struct {
+	identity string
+}
+
+func (t claudeCaptureIdentityRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		Status:     "200 OK",
+		StatusCode: http.StatusOK,
+		Proto:      "HTTP/1.1",
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(`{"id":"msg-test"}`)),
+	}, nil
+}
+
+func (t claudeCaptureIdentityRoundTripper) ClaudeTransportCaptureIdentity() string {
+	return t.identity
+}
+
+func TestCaptureClaudeTransportIdentityThroughUsageWrapper(t *testing.T) {
+	captureRoot := t.TempDir()
+	t.Setenv(claudeCaptureDirEnv, captureRoot)
+	claudeCaptureSequence = 0
+
+	reporter := helps.NewUsageReporter(context.Background(), "test", "model", nil)
+	client := reporter.TrackHTTPClient(&http.Client{
+		Transport: claudeCaptureIdentityRoundTripper{identity: "transport-a"},
+	})
+	req, err := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages?beta=true", strings.NewReader(`{"stream":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := captureClaudeUpstreamRequest(client, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = io.Copy(io.Discard, resp.Body); err != nil {
+		t.Fatal(err)
+	}
+	if err = resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(captureRoot, "000001", "request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record claudeCapturedRequest
+	if err = json.Unmarshal(data, &record); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := record.Association.TransportInstanceSHA256, claudeCaptureHash("transport-a"); got != want {
+		t.Fatalf("transport identity = %q, want %q", got, want)
 	}
 }
