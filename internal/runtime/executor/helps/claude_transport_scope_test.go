@@ -193,3 +193,62 @@ func TestCachedClaudeCodeRoundTripperScopesTLSSessionPolicy(t *testing.T) {
 		t.Fatal("explicit false policy resolved as enabled")
 	}
 }
+
+func TestNewUtlsHTTPClientScopesTransportByClaudeSession(t *testing.T) {
+	proxyURL := "http://127.0.0.1:29662"
+	auth := &cliproxyauth.Auth{ID: "session-scoped-client", ProxyURL: proxyURL}
+	cfg := &config.Config{SDKConfig: config.SDKConfig{ClaudeCode: config.ClaudeCodeConfig{SessionScopedTransport: true}}}
+	first := NewUtlsHTTPClient(claudeTransportSessionContext("session-scope-a"), cfg, auth, 0).Transport.(*fallbackRoundTripper).anthropic
+	reused := NewUtlsHTTPClient(claudeTransportSessionContext("session-scope-a"), cfg, auth.Clone(), 0).Transport.(*fallbackRoundTripper).anthropic
+	isolated := NewUtlsHTTPClient(claudeTransportSessionContext("session-scope-b"), cfg, auth.Clone(), 0).Transport.(*fallbackRoundTripper).anthropic
+	otherCredential := NewUtlsHTTPClient(claudeTransportSessionContext("session-scope-a"), cfg, &cliproxyauth.Auth{ID: "session-scoped-other", ProxyURL: proxyURL}, 0).Transport.(*fallbackRoundTripper).anthropic
+
+	if reused != first {
+		t.Fatal("same credential, proxy, and session did not reuse transport")
+	}
+	if isolated == first {
+		t.Fatal("different sessions reused one transport")
+	}
+	if otherCredential == first {
+		t.Fatal("different credentials reused one session-scoped transport")
+	}
+}
+
+func TestNewUtlsHTTPClientSessionScopeMissingSessionDoesNotShare(t *testing.T) {
+	proxyURL := "http://127.0.0.1:29663"
+	auth := &cliproxyauth.Auth{ID: "session-scoped-missing", ProxyURL: proxyURL}
+	cfg := &config.Config{SDKConfig: config.SDKConfig{ClaudeCode: config.ClaudeCodeConfig{SessionScopedTransport: true}}}
+	first := NewUtlsHTTPClient(t.Context(), cfg, auth, 0).Transport.(*fallbackRoundTripper).anthropic
+	second := NewUtlsHTTPClient(t.Context(), cfg, auth.Clone(), 0).Transport.(*fallbackRoundTripper).anthropic
+	if second == first {
+		t.Fatal("sessionless requests shared a transport")
+	}
+}
+
+func TestNewUtlsHTTPClientExplicitOwnerPrecedesSessionScope(t *testing.T) {
+	proxyURL := "http://127.0.0.1:29664"
+	auth := &cliproxyauth.Auth{ID: "session-scoped-explicit", ProxyURL: proxyURL}
+	cfg := &config.Config{SDKConfig: config.SDKConfig{ClaudeCode: config.ClaudeCodeConfig{SessionScopedTransport: true}}}
+	owner := NewClaudeCodeTransportOwner()
+	firstContext := WithClaudeCodeTransportOwner(claudeTransportSessionContext("session-explicit-a"), owner)
+	secondContext := WithClaudeCodeTransportOwner(claudeTransportSessionContext("session-explicit-b"), owner)
+	first := NewUtlsHTTPClient(firstContext, cfg, auth, 0).Transport.(*fallbackRoundTripper).anthropic
+	second := NewUtlsHTTPClient(secondContext, cfg, auth.Clone(), 0).Transport.(*fallbackRoundTripper).anthropic
+	if second != first {
+		t.Fatal("explicit trusted owner did not override session approximation")
+	}
+}
+
+func TestNewUtlsHTTPClientSessionScopeDisabledPreservesOwnerlessReuse(t *testing.T) {
+	proxyURL := "http://127.0.0.1:29665"
+	auth := &cliproxyauth.Auth{ID: "session-scoped-disabled", ProxyURL: proxyURL}
+	cfg := &config.Config{}
+	first := NewUtlsHTTPClient(claudeTransportSessionContext("session-disabled-a"), cfg, auth, 0).Transport.(*fallbackRoundTripper).anthropic
+	second := NewUtlsHTTPClient(claudeTransportSessionContext("session-disabled-b"), cfg, auth.Clone(), 0).Transport.(*fallbackRoundTripper).anthropic
+	if second != first {
+		t.Fatal("disabled session scope changed ownerless compatibility behavior")
+	}
+	if ClaudeCodeSessionScopedTransportEnabled(cfg) {
+		t.Fatal("empty config enabled session-scoped transport")
+	}
+}

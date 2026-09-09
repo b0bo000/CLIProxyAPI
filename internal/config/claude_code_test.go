@@ -57,4 +57,27 @@ func TestParseConfigBytesClaudeCodeTLSSessionResumption(t *testing.T) {
 	}
 }
 
+func TestParseConfigBytesClaudeCodeSessionScopedTransport(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		want bool
+	}{
+		{name: "omitted is disabled", yaml: "port: 8317\n", want: false},
+		{name: "enabled", yaml: "claude-code:\n  session-scoped-transport: true\n", want: true},
+		{name: "explicitly disabled", yaml: "claude-code:\n  session-scoped-transport: false\n", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, errParse := ParseConfigBytes([]byte(tt.yaml))
+			if errParse != nil {
+				t.Fatalf("ParseConfigBytes() error = %v", errParse)
+			}
+			if got := cfg.ClaudeCode.SessionScopedTransport; got != tt.want {
+				t.Fatalf("SessionScopedTransport = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
 func claudeBoolPtr(v bool) *bool { return &v }

@@ -68,6 +68,11 @@ type ClaudeCodeConfig struct {
 	// DisableCloakingModelList disables model ID cloaking in Anthropic model list responses.
 	DisableCloakingModelList bool `yaml:"disable-cloaking-model-list" json:"disable-cloaking-model-list"`
 
+	// SessionScopedTransport isolates the Claude inference HTTP pool and TLS
+	// session cache by the downstream Claude Code session. This is an explicit
+	// approximation of a Claude Code process boundary for the default HTTP server.
+	SessionScopedTransport bool `yaml:"session-scoped-transport,omitempty" json:"session-scoped-transport,omitempty"`
+
 	// TLSSessionResumption controls the Claude inference-plane TLS client-session
 	// cache. Nil preserves the existing enabled behavior; false disables
 	// resumption for controlled comparisons without changing the HTTP/body path.

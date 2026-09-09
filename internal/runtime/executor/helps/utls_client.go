@@ -420,7 +420,10 @@ func NewUtlsHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyau
 	}
 
 	var chromeRT http.RoundTripper = newUtlsRoundTripper(proxyURL)
-	owner, _ := claudeCodeTransportOwnerFromContext(ctx)
+	owner, hasOwner := claudeCodeTransportOwnerFromContext(ctx)
+	if !hasOwner && ClaudeCodeSessionScopedTransportEnabled(cfg) {
+		owner, _ = claudeCodeSessionTransportOwner(ctx)
+	}
 	tlsSessionResumption := ClaudeCodeTLSSessionResumptionEnabled(cfg)
 	var anthropicRT http.RoundTripper = cachedClaudeCodeRoundTripperForAuthOwnerAndPolicy(proxyURL, auth, owner, tlsSessionResumption)
 	var standardTransport http.RoundTripper = http.DefaultTransport

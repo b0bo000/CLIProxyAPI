@@ -25,6 +25,12 @@ func ClaudeCodeTLSSessionResumptionEnabled(cfg *config.Config) bool {
 	return *cfg.ClaudeCode.TLSSessionResumption
 }
 
+// ClaudeCodeSessionScopedTransportEnabled reports whether the default HTTP
+// server should approximate a CLI process boundary with the Claude session.
+func ClaudeCodeSessionScopedTransportEnabled(cfg *config.Config) bool {
+	return cfg != nil && cfg.ClaudeCode.SessionScopedTransport
+}
+
 // claudeCodeTransportCredentialScope returns an opaque, stable cache scope for
 // a credential without retaining any credential material in the cache key.
 func claudeCodeTransportCredentialScope(auth *cliproxyauth.Auth) (string, bool) {
