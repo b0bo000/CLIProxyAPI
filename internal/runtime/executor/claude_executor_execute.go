@@ -281,6 +281,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 			claudePromptIDScope = scope
 		}
 	}
+	ctx = beginClaudeCapture(ctx, "messages", incomingHeaders, originalPayload, claudeSessionID, claudeDiagnosticsCredentialIdentity(auth), claudeCaptureProxyCacheKey(e.cfg, auth))
 	originalTranslated := helps.TranslateRequestWithAPIKeyModelCompatibility(ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, upstreamStream, helps.APIKeyModelIsCompat(req))
 	body := helps.TranslateRequestWithAPIKeyModelCompatibility(ctx, opts.Headers, e.cfg, from, to, baseModel, req.Payload, upstreamStream, helps.APIKeyModelIsCompat(req))
 	body = helps.SetStringIfDifferent(body, "model", upstreamModel)
@@ -292,6 +293,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	if rebuildMidSystemMessageEnabled(e.cfg, auth) {
 		body = rebuildMidSystemMessagesToTopLevel(body)
 	}
+	captureClaudeStage(ctx, "translated", body, nil)
 
 	// Apply cloaking (system prompt injection, fake user ID, sensitive word obfuscation)
 	// based on client type and configuration.
@@ -309,6 +311,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	if err != nil {
 		return resp, err
 	}
+	captureClaudeStage(ctx, "after_cloak", body, nil)
 	systemPlacementState := captureClaudeCodeSystemPlacement(bodyBeforeCloaking, body, cloaked)
 	// Only the Messages endpoint on Anthropic itself was captured; count_tokens
 	// keeps its own shape and other gateways never see this field.
@@ -320,13 +323,15 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	if contextManagementState.eligible {
 		body, contextManagementState.automaticallyInjected = injectClaudeCodeContextManagement(body)
 	}
+	captureClaudeStage(ctx, "after_context_management", body, nil)
 	// Diagnostics has an independent eligibility boundary. Native Claude Code
 	// requests are not cloaked, so tying this call to context-management
 	// eligibility would silently omit the managed diagnostics chain from the
 	// confirmed-native wire path.
 	body, diagnosticsState = beginClaudeDiagnostics(
-		body, auth, claudeSessionID, baseURL, softwareProfile, fp.InjectDiagnostics,
+		body, auth, claudeSessionID, baseURL, softwareProfile, claudeCaptureDiagnosticsEnabled(fp.InjectDiagnostics),
 	)
+	captureClaudeStage(ctx, "after_diagnostics", body, nil)
 
 	requestedModel := helps.PayloadRequestedModel(opts, req.Model)
 	requestPath := helps.PayloadRequestPath(opts)
@@ -431,6 +436,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 			return resp, fmt.Errorf("insert Claude cc_prompt_id: %w", err)
 		}
 	}
+	captureClaudeStage(ctx, "after_identity", bodyForUpstream, nil)
 	cchBilling := ""
 	if cchSigning {
 		if !softwareProfile.IsHelperProfile() || claudeBodyNeedsBillingFallback(bodyForUpstream) {
@@ -447,6 +453,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 			return resp, fmt.Errorf("finalize Claude CCH: %w", err)
 		}
 	}
+	captureClaudeStage(ctx, "after_cch", bodyForUpstream, nil)
 	bodyForUpstream = stripDefaultKimiClaudeCodeAttribution(auth, url, fp.ProfileClaudeCodeCLI, bodyForUpstream)
 	if errIdentity := helps.ValidateClaudeBillingSoftwareIdentity(bodyForUpstream, softwareProfile, e.cfg); errIdentity != nil {
 		return resp, errIdentity
