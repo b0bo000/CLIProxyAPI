@@ -42,12 +42,13 @@ type claudeCaptureState struct {
 }
 
 type claudeCaptureAssociation struct {
-	SessionSHA256         string `json:"session_sha256,omitempty"`
-	ClientRequestSHA256   string `json:"client_request_sha256,omitempty"`
-	CredentialSHA256      string `json:"credential_sha256,omitempty"`
-	CCPreviousReqSHA256   string `json:"cc_prev_req_sha256,omitempty"`
-	DiagnosticsPrevSHA256 string `json:"diagnostics_previous_message_sha256,omitempty"`
-	TransportKeySHA256    string `json:"transport_cache_key_sha256,omitempty"`
+	SessionSHA256           string `json:"session_sha256,omitempty"`
+	ClientRequestSHA256     string `json:"client_request_sha256,omitempty"`
+	CredentialSHA256        string `json:"credential_sha256,omitempty"`
+	CCPreviousReqSHA256     string `json:"cc_prev_req_sha256,omitempty"`
+	DiagnosticsPrevSHA256   string `json:"diagnostics_previous_message_sha256,omitempty"`
+	TransportKeySHA256      string `json:"transport_cache_key_sha256,omitempty"`
+	TransportInstanceSHA256 string `json:"transport_instance_sha256,omitempty"`
 }
 
 type claudeCapturedStage struct {
@@ -298,6 +299,9 @@ func captureClaudeUpstreamRequest(client *http.Client, req *http.Request) (*http
 	}
 	sequence := state.Sequence
 	requestDir := state.RequestDir
+	if identifiable, ok := client.Transport.(interface{ ClaudeTransportCaptureIdentity() string }); ok {
+		state.Association.TransportInstanceSHA256 = claudeCaptureHash(identifiable.ClaudeTransportCaptureIdentity())
+	}
 
 	started := time.Now().UTC()
 	body, errRead := readAndRestoreClaudeCaptureBody(req)

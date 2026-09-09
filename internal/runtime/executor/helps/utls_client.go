@@ -380,6 +380,17 @@ type fallbackRoundTripper struct {
 	fallback  http.RoundTripper
 }
 
+// ClaudeTransportCaptureIdentity returns a process-local identity for the
+// cached Anthropic RoundTripper selected by this client. The value is consumed
+// only by the opt-in CPA_CLAUDE_CAPTURE_DIR instrumentation and is hashed
+// before it is written to disk.
+func (f *fallbackRoundTripper) ClaudeTransportCaptureIdentity() string {
+	if f == nil || f.anthropic == nil {
+		return ""
+	}
+	return fmt.Sprintf("%p", f.anthropic)
+}
+
 func (f *fallbackRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if IsAnthropicUpstreamURL(req.URL) {
 		return f.anthropic.RoundTrip(req)
