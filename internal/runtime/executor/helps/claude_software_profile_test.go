@@ -97,7 +97,7 @@ func TestResolveClaudeSoftwareProfileProvenance(t *testing.T) {
 
 func confirmedSoftwareProfileHeaders(entrypoint string) http.Header {
 	return http.Header{
-		"User-Agent":     {"claude-cli/2.1.220 (external, " + entrypoint + ")"},
+		"User-Agent":     {"claude-cli/2.1.258 (external, " + entrypoint + ")"},
 		"X-App":          {"cli"},
 		"Anthropic-Beta": {"claude-code-20250219"},
 	}
@@ -211,12 +211,12 @@ func TestValidateClaudeBillingSoftwareIdentityRejectsConflict(t *testing.T) {
 		billing string
 		wantErr bool
 	}{
-		{name: "matching", billing: "x-anthropic-billing-header: cc_version=2.1.220.04c; cc_entrypoint=sdk-cli; cch=abcde;"},
-		{name: "entrypoint mismatch", billing: "x-anthropic-billing-header: cc_version=2.1.220.04c; cc_entrypoint=cli; cch=abcde;", wantErr: true},
+		{name: "matching", billing: "x-anthropic-billing-header: cc_version=2.1.258.04c; cc_entrypoint=sdk-cli; cch=abcde;"},
+		{name: "entrypoint mismatch", billing: "x-anthropic-billing-header: cc_version=2.1.258.04c; cc_entrypoint=cli; cch=abcde;", wantErr: true},
 		{name: "version mismatch", billing: "x-anthropic-billing-header: cc_version=2.1.241.04c; cc_entrypoint=sdk-cli; cch=abcde;", wantErr: true},
-		{name: "missing entrypoint", billing: "x-anthropic-billing-header: cc_version=2.1.220.04c; cch=abcde;", wantErr: true},
-		{name: "duplicate version", billing: "x-anthropic-billing-header: cc_version=2.1.220.04c; cc_version=2.1.220.04c; cc_entrypoint=sdk-cli; cch=abcde;", wantErr: true},
-		{name: "duplicate entrypoint", billing: "x-anthropic-billing-header: cc_version=2.1.220.04c; cc_entrypoint=sdk-cli; cc_entrypoint=sdk-cli; cch=abcde;", wantErr: true},
+		{name: "missing entrypoint", billing: "x-anthropic-billing-header: cc_version=2.1.258.04c; cch=abcde;", wantErr: true},
+		{name: "duplicate version", billing: "x-anthropic-billing-header: cc_version=2.1.258.04c; cc_version=2.1.258.04c; cc_entrypoint=sdk-cli; cch=abcde;", wantErr: true},
+		{name: "duplicate entrypoint", billing: "x-anthropic-billing-header: cc_version=2.1.258.04c; cc_entrypoint=sdk-cli; cc_entrypoint=sdk-cli; cch=abcde;", wantErr: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -242,7 +242,7 @@ func TestValidateClaudeBillingSoftwareIdentityRejectsLaterBillingBlock(t *testin
 		Entrypoint: "cli",
 		Provenance: ClaudeSoftwareProfileConfiguredCLI,
 	}
-	payload := []byte(`{"system":[{"type":"text","text":"ordinary"},{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.220.test; cc_entrypoint=cli; cch=abcde;"}]}`)
+	payload := []byte(`{"system":[{"type":"text","text":"ordinary"},{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.258.test; cc_entrypoint=cli; cch=abcde;"}]}`)
 	errValidate := ValidateClaudeBillingSoftwareIdentity(payload, profile, nil)
 	if errValidate == nil || !strings.Contains(errValidate.Error(), "first system block") {
 		t.Fatalf("ValidateClaudeBillingSoftwareIdentity() error = %v, want later-block rejection", errValidate)
@@ -256,11 +256,11 @@ func TestValidateClaudeBillingSoftwareIdentityHandlesStringAndWhitespace(t *test
 		Entrypoint: "cli",
 		Provenance: ClaudeSoftwareProfileConfiguredCLI,
 	}
-	matching := "  x-anthropic-billing-header: cc_version=2.1.220.test; cc_entrypoint=cli; cch=abcde;  "
+	matching := "  x-anthropic-billing-header: cc_version=2.1.258.test; cc_entrypoint=cli; cch=abcde;  "
 	if errValidate := ValidateClaudeBillingSoftwareIdentity([]byte(`{"system":`+quoteJSON(matching)+`}`), profile, nil); errValidate != nil {
 		t.Fatalf("string billing validation error = %v", errValidate)
 	}
-	conflicting := " x-anthropic-billing-header: cc_version=2.1.220.test; cc_entrypoint=sdk-cli; cch=abcde;"
+	conflicting := " x-anthropic-billing-header: cc_version=2.1.258.test; cc_entrypoint=sdk-cli; cch=abcde;"
 	errValidate := ValidateClaudeBillingSoftwareIdentity([]byte(`{"system":`+quoteJSON(conflicting)+`}`), profile, nil)
 	if errValidate == nil || !strings.Contains(errValidate.Error(), "conflicts with resolved entrypoint") {
 		t.Fatalf("string billing conflict error = %v", errValidate)

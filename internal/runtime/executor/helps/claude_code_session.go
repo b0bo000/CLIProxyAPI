@@ -38,6 +38,15 @@ func ExtractClaudeCodeAgentID(ctx context.Context, headers http.Header) string {
 // ClaudeCodeExecutionScope returns the stable root-session and agent identity used by Codex execution state.
 func ClaudeCodeExecutionScope(ctx context.Context, payload []byte, headers http.Header) (string, bool) {
 	sessionID := ExtractClaudeCodeSessionID(ctx, payload, headers)
+	return ClaudeCodeExecutionScopeForSession(ctx, sessionID, headers)
+}
+
+// ClaudeCodeExecutionScopeForSession builds the execution scope from an
+// already-resolved provider session. It is used when an embedding host supplies
+// the canonical session through executor metadata rather than Claude-specific
+// headers or metadata.user_id.
+func ClaudeCodeExecutionScopeForSession(ctx context.Context, sessionID string, headers http.Header) (string, bool) {
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return "", false
 	}
@@ -51,6 +60,14 @@ func ClaudeCodeExecutionScope(ctx context.Context, payload []byte, headers http.
 // an untrusted request to inherit the root scope.
 func ClaudeCodePromptIDScope(ctx context.Context, payload []byte, headers http.Header) (string, bool) {
 	sessionID := ExtractClaudeCodeSessionID(ctx, payload, headers)
+	return ClaudeCodePromptIDScopeForSession(ctx, sessionID, payload, headers)
+}
+
+// ClaudeCodePromptIDScopeForSession builds prompt state scope from an
+// already-resolved provider session while retaining the native parent/subagent
+// inheritance rule.
+func ClaudeCodePromptIDScopeForSession(ctx context.Context, sessionID string, payload []byte, headers http.Header) (string, bool) {
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return "", false
 	}
@@ -79,6 +96,24 @@ func claudeCodeHeader(ctx context.Context, headers http.Header, name string) str
 // HeaderValueCaseInsensitive returns the first non-empty header value matching name case-insensitively.
 func HeaderValueCaseInsensitive(headers http.Header, name string) string {
 	return headerValueCaseInsensitive(headers, name)
+}
+
+// HeaderValuesCaseInsensitive returns all non-empty header values matching name case-insensitively.
+func HeaderValuesCaseInsensitive(headers http.Header, name string) []string {
+	if headers == nil {
+		return nil
+	}
+	var result []string
+	for key, values := range headers {
+		if strings.EqualFold(key, name) {
+			for _, value := range values {
+				if trimmed := strings.TrimSpace(value); trimmed != "" {
+					result = append(result, trimmed)
+				}
+			}
+		}
+	}
+	return result
 }
 
 func headerValueCaseInsensitive(headers http.Header, name string) string {

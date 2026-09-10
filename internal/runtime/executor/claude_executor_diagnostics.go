@@ -14,8 +14,10 @@ import (
 )
 
 type claudeDiagnosticsRequestState struct {
-	key      string
-	sequence uint64
+	key               string
+	sequence          uint64
+	promptID          string
+	unifiedContinuity bool
 }
 
 // beginClaudeDiagnostics applies the diagnostics policy at the request
@@ -50,8 +52,20 @@ func injectClaudeDiagnostics(body []byte, auth *cliproxyauth.Auth, sessionID str
 		return body, claudeDiagnosticsRequestState{}
 	}
 	key, sequence, previousMessageID := helps.BeginClaudeDiagnostics(claudeDiagnosticsCredentialIdentity(auth), sessionID)
+	return injectClaudeDiagnosticsWithState(body, key, sequence, previousMessageID)
+}
+
+func injectClaudeDiagnosticsWithState(body []byte, key string, sequence uint64, previousMessageID string, promptIDs ...string) ([]byte, claudeDiagnosticsRequestState) {
+	if gjson.GetBytes(body, "diagnostics").Exists() {
+		return body, claudeDiagnosticsRequestState{}
+	}
 	if key == "" {
 		return body, claudeDiagnosticsRequestState{}
+	}
+	promptID := ""
+	unifiedContinuity := len(promptIDs) > 0
+	if unifiedContinuity {
+		promptID = promptIDs[0]
 	}
 	value := `{"previous_message_id":null}`
 	if previousMessageID != "" {
@@ -61,7 +75,7 @@ func injectClaudeDiagnostics(body []byte, auth *cliproxyauth.Auth, sessionID str
 	if diagnostics := gjson.GetBytes(body, "diagnostics"); diagnostics.Exists() {
 		updated, errSet := sjson.SetRawBytes(body, "diagnostics", []byte(value))
 		if errSet == nil {
-			return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence}
+			return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence, promptID: promptID, unifiedContinuity: unifiedContinuity}
 		}
 	}
 	if contextManagement := gjson.GetBytes(body, "context_management"); contextManagement.Exists() {
@@ -73,14 +87,30 @@ func injectClaudeDiagnostics(body []byte, auth *cliproxyauth.Auth, sessionID str
 			updated = append(updated, `,"diagnostics":`...)
 			updated = append(updated, value...)
 			updated = append(updated, body[insertAt:]...)
-			return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence}
+			return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence, promptID: promptID, unifiedContinuity: unifiedContinuity}
 		}
 	}
 	updated, errSet := sjson.SetRawBytes(body, "diagnostics", []byte(value))
 	if errSet != nil {
 		return body, claudeDiagnosticsRequestState{}
 	}
-	return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence}
+	return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence, promptID: promptID, unifiedContinuity: unifiedContinuity}
+}
+
+func commitClaudeContinuity(state claudeDiagnosticsRequestState, messageID, requestID string) {
+	helps.CommitClaudeContinuity(state.key, state.sequence, messageID, requestID, state.promptID)
+}
+
+func commitClaudeDiagnostics(state claudeDiagnosticsRequestState, messageID string) {
+	helps.CommitClaudeDiagnostics(state.key, state.sequence, messageID)
+}
+
+func commitClaudeResponseContinuity(state claudeDiagnosticsRequestState, messageID, requestID string) {
+	if state.unifiedContinuity {
+		commitClaudeContinuity(state, messageID, requestID)
+		return
+	}
+	commitClaudeDiagnostics(state, messageID)
 }
 
 func claudeDiagnosticsCredentialIdentity(auth *cliproxyauth.Auth) string {
@@ -113,10 +143,6 @@ func claudeCaptureProxyCacheKey(cfg *config.Config, auth *cliproxyauth.Auth) str
 		return strings.TrimSpace(cfg.ProxyURL)
 	}
 	return ""
-}
-
-func commitClaudeDiagnostics(state claudeDiagnosticsRequestState, messageID string) {
-	helps.CommitClaudeDiagnostics(state.key, state.sequence, messageID)
 }
 
 func claudeMessageIDFromResponse(data []byte) string {

@@ -626,11 +626,11 @@ func TestClaudeExecutorPrevRequestExecuteIsolatesCredentialAndSession(t *testing
 func TestClaudeExecutorPrevRequestExecuteExcludesHelperAndCustomUpstream(t *testing.T) {
 	t.Run("structured helper", func(t *testing.T) {
 		betas := claudeNativeHelperCoreBetas + ",structured-outputs-2025-12-15"
-		payload := []byte(`{"model":"claude-haiku-4-5-20251001","messages":[{"role":"user","content":[{"type":"text","text":"helper probe"}]}],"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.220; cc_entrypoint=cli; cch=00000;"},{"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."},{"type":"text","text":"Return a short title."}],"tools":[],"metadata":{"user_id":"` + strings.ReplaceAll(claudeNativeHelperUserID, `"`, `\"`) + `"},"max_tokens":32000,"thinking":{"type":"disabled"},"temperature":1,"output_config":{"format":{"type":"json_schema","schema":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"],"additionalProperties":false}}},"stream":true}`)
+		payload := []byte(`{"model":"claude-haiku-4-5-20251001","messages":[{"role":"user","content":[{"type":"text","text":"helper probe"}]}],"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.258; cc_entrypoint=cli; cch=00000;"},{"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."},{"type":"text","text":"Return a short title."}],"tools":[],"metadata":{"user_id":"` + strings.ReplaceAll(claudeNativeHelperUserID, `"`, `\"`) + `"},"max_tokens":32000,"thinking":{"type":"disabled"},"temperature":1,"output_config":{"format":{"type":"json_schema","schema":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"],"additionalProperties":false}}},"stream":true}`)
 		auth := claudeNativeHelperOAuthAuth("")
 		auth.ID = "s4a3-helper-" + uuid.NewString()
 		request := cliproxyexecutor.Request{Model: "claude-haiku-4-5-20251001", Payload: payload}
-		options := cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatClaude, OriginalRequest: payload, Headers: claudeNativeHelperHeaders(betas, "gzip, deflate, br, zstd", true)}
+		options := cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatClaude, OriginalRequest: payload, Headers: claudeNativeHelperHeaders(betas, "gzip, deflate, br, zstd")}
 		var bodies [][]byte
 		transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 			body, _ := io.ReadAll(req.Body)

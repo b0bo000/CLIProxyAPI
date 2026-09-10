@@ -285,7 +285,7 @@ func TestResolvedClaudeSoftwareProfileRejectsFinalBodyMutation(t *testing.T) {
 	const userID = `{"device_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","account_uuid":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","session_id":"11111111-2222-4333-8444-555555555555"}`
 	encodedUserID, _ := json.Marshal(userID)
 	payload := []byte(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"x"}],"metadata":{"user_id":` + string(encodedUserID) + `}}`)
-	mutatedBilling := "x-anthropic-billing-header: cc_version=2.1.220.test; cc_entrypoint=cli; cch=00000;"
+	mutatedBilling := "x-anthropic-billing-header: cc_version=2.1.258.test; cc_entrypoint=cli; cch=00000;"
 	cfg := &config.Config{
 		Payload: config.PayloadConfig{
 			Override: []config.PayloadRule{
@@ -299,7 +299,7 @@ func TestResolvedClaudeSoftwareProfileRejectsFinalBodyMutation(t *testing.T) {
 		},
 	}
 	incoming := http.Header{
-		"User-Agent":     {"claude-cli/2.1.220 (external, sdk-cli)"},
+		"User-Agent":     {"claude-cli/2.1.258 (external, sdk-cli)"},
 		"X-App":          {"cli"},
 		"Anthropic-Beta": {"claude-code-20250219"},
 	}
