@@ -32,6 +32,8 @@ var (
 	claudeCodeNativeUserAgentPattern  = regexp.MustCompile(`(?i)^claude-cli/[0-9]+\.[0-9]+\.[0-9]+\s+\(external,\s*[^,)]+(?:,\s*agent-sdk/[0-9]+\.[0-9]+\.[0-9]+)?\)$`)
 )
 
+const claudeCodeTitleInstructionPrefix = "You are naming a coding session so the user can pick it out of a long list of sessions."
+
 var claudeCodeSubclientByEntrypoint = map[string]string{
 	"cli":                       "claude-code-cli",
 	"mcp":                       "claude-code-mcp",
@@ -114,6 +116,7 @@ type ClaudeCodeRequestDetection struct {
 	BetasPresent    bool
 	MetadataUserID  bool
 	HelperProfile   bool
+	TitleRequest    bool
 	Entrypoint      string
 	Subclient       string
 	AgentSDKVersion string
@@ -146,9 +149,66 @@ func DetectClaudeCodeRequest(headers http.Header, payload []byte, countTokens bo
 	detection.NativeClient = nativeClaudeEntrypoints[entrypoint]
 	standardSignals := detection.XAppCLI && detection.UserAgent && detection.BetasPresent && (countTokens || detection.MetadataUserID)
 	detection.HelperProfile = detection.NativeClient && matchesMeasuredClaudeCodeHelperProfile(headers, payload, countTokens, detection, cfg)
+	detection.TitleRequest = detection.NativeClient && standardSignals && matchesClaudeCodeTitleRequest(payload, countTokens)
 	detection.StrongSignals = standardSignals || detection.HelperProfile
 	detection.Confirmed = detection.StrongSignals && detection.NativeClient
 	return detection
+}
+
+// matchesClaudeCodeTitleRequest identifies the current native session-title
+// request shape without tying the request kind to a model name or serialized
+// body length. Title requests use a constrained JSON-schema response and a
+// dedicated system instruction, while retaining the normal native envelope.
+func matchesClaudeCodeTitleRequest(payload []byte, countTokens bool) bool {
+	if countTokens {
+		return false
+	}
+	messages := gjson.GetBytes(payload, "messages")
+	if !messages.IsArray() || len(messages.Array()) != 1 {
+		return false
+	}
+	message := messages.Get("0")
+	if message.Get("role").String() != "user" {
+		return false
+	}
+	content := message.Get("content")
+	if !content.IsArray() || len(content.Array()) != 1 || content.Get("0.type").String() != "text" || content.Get("0.text").Type != gjson.String {
+		return false
+	}
+	system := gjson.GetBytes(payload, "system")
+	if !system.IsArray() || len(system.Array()) != 3 {
+		return false
+	}
+	for _, block := range system.Array() {
+		if block.Get("type").String() != "text" || block.Get("text").Type != gjson.String {
+			return false
+		}
+	}
+	if !strings.HasPrefix(system.Get("2.text").String(), claudeCodeTitleInstructionPrefix) {
+		return false
+	}
+	tools := gjson.GetBytes(payload, "tools")
+	if !tools.IsArray() || len(tools.Array()) != 0 {
+		return false
+	}
+	if gjson.GetBytes(payload, "thinking.type").String() != "disabled" || gjson.GetBytes(payload, "stream").Type != gjson.True {
+		return false
+	}
+	schema := gjson.GetBytes(payload, "output_config.format.schema")
+	if gjson.GetBytes(payload, "output_config.format.type").String() != "json_schema" ||
+		!schema.IsObject() || schema.Get("type").String() != "object" || schema.Get("additionalProperties").Type != gjson.False {
+		return false
+	}
+	properties := schema.Get("properties")
+	if !properties.IsObject() || len(properties.Map()) != 1 {
+		return false
+	}
+	title := schema.Get("properties.title")
+	if !title.IsObject() || title.Get("type").String() != "string" {
+		return false
+	}
+	required := schema.Get("required")
+	return required.IsArray() && len(required.Array()) == 1 && required.Get("0").String() == "title"
 }
 
 func claudeCodeHelperBetaProfile(redactThinking bool, trailing ...string) string {

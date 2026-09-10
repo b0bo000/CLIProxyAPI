@@ -316,6 +316,22 @@ func TestClaudeCodeTLSResumptionIsWireSafe(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeTLSResumptionPolicyBuildsEnabledOrDisabledConfig(t *testing.T) {
+	enabled := newClaudeCodeTLSConfigForPolicy("api.anthropic.com", true)
+	if enabled.ClientSessionCache == nil {
+		t.Fatal("enabled policy lost the client session cache")
+	}
+	disabled := newClaudeCodeTLSConfigForPolicy("api.anthropic.com", false)
+	if disabled.ClientSessionCache != nil {
+		t.Fatal("disabled policy retained the client session cache")
+	}
+	for name, cfg := range map[string]*tls.Config{"enabled": enabled, "disabled": disabled} {
+		if !cfg.OmitEmptyPsk || !cfg.PreferSkipResumptionOnNilExtension {
+			t.Fatalf("%s policy lost ClientHello PSK safeguards: omit=%v skip=%v", name, cfg.OmitEmptyPsk, cfg.PreferSkipResumptionOnNilExtension)
+		}
+	}
+}
+
 func TestClaudeCodeRequestHeaderOrderMatchesNative220Capture(t *testing.T) {
 	t.Parallel()
 

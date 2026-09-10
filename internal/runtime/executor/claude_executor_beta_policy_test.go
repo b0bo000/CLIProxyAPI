@@ -239,6 +239,104 @@ func TestApplyClaudeHeaders_DiagnosticsBetaFollowsBodyInNativeOrder(t *testing.T
 	}
 }
 
+func TestApplyClaudeHeaders_ConfirmedDiagnosticsAddsMissingBeta(t *testing.T) {
+	incoming := http.Header{}
+	incoming.Set("Anthropic-Beta", claudeCodeBeta+","+claudeEffortBeta)
+	body := []byte(`{"model":"claude-opus-5","diagnostics":{"previous_message_id":null}}`)
+
+	for _, stream := range []bool{false, true} {
+		req := newClaudeHeaderTestRequest(t, nil)
+		if err := applyClaudeHeaders(req, claudeOAuthAuthForBetaPolicy(), claudeRaceProbeOAuthKey, stream, nil,
+			body, nil, incoming, true); err != nil {
+			t.Fatalf("applyClaudeHeaders(stream=%v) error = %v", stream, err)
+		}
+		got := req.Header.Get("Anthropic-Beta")
+		if want := claudeExtendedCacheTTLBeta + "," + claudeCacheDiagnosisBeta; !strings.HasSuffix(got, want) {
+			t.Fatalf("stream=%v: Anthropic-Beta = %q, want body-coupled trailer %q", stream, got, want)
+		}
+		if count := strings.Count(got, claudeCacheDiagnosisBeta); count != 1 {
+			t.Fatalf("stream=%v: Anthropic-Beta contains diagnostics beta %d times, want 1: %q", stream, count, got)
+		}
+	}
+}
+
+func TestApplyClaudeHeaders_DiagnosticsBetaBoundary(t *testing.T) {
+	tests := []struct {
+		name      string
+		url       string
+		body      []byte
+		incoming  string
+		confirmed bool
+		callerOwn bool
+		wantCount int
+	}{
+		{
+			name:      "caller-owned diagnostics on Anthropic",
+			url:       "https://api.anthropic.com/v1/messages?beta=true",
+			body:      []byte(`{"model":"claude-opus-5","diagnostics":{"previous_message_id":"msg_previous"}}`),
+			incoming:  "caller-beta-2099-01-01",
+			callerOwn: true,
+			wantCount: 1,
+		},
+		{
+			name:      "no diagnostics",
+			url:       "https://api.anthropic.com/v1/messages?beta=true",
+			body:      []byte(`{"model":"claude-opus-5"}`),
+			incoming:  claudeCodeBeta + "," + claudeEffortBeta,
+			confirmed: true,
+			wantCount: 0,
+		},
+		{
+			name:      "existing beta is deduplicated",
+			url:       "https://api.anthropic.com/v1/messages?beta=true",
+			body:      []byte(`{"model":"claude-opus-5","diagnostics":{"previous_message_id":null}}`),
+			incoming:  claudeCodeBeta + "," + claudeCacheDiagnosisBeta,
+			confirmed: true,
+			wantCount: 1,
+		},
+		{
+			name:      "count tokens remains independent",
+			url:       "https://api.anthropic.com/v1/messages/count_tokens?beta=true",
+			body:      []byte(`{"model":"claude-opus-5","diagnostics":{"previous_message_id":null}}`),
+			incoming:  claudeCodeBeta,
+			confirmed: true,
+			wantCount: 0,
+		},
+		{
+			name:      "custom upstream retains caller beta set",
+			url:       "https://gateway.example.com/v1/messages?beta=true",
+			body:      []byte(`{"model":"claude-opus-5","diagnostics":{"previous_message_id":null}}`),
+			incoming:  "gateway-beta-2099-01-01",
+			confirmed: true,
+			wantCount: 0,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			req, errRequest := http.NewRequest(http.MethodPost, test.url, nil)
+			if errRequest != nil {
+				t.Fatalf("http.NewRequest() error = %v", errRequest)
+			}
+			incoming := http.Header{}
+			incoming.Set("Anthropic-Beta", test.incoming)
+			auth := claudeOAuthAuthForBetaPolicy()
+			apiKey := claudeRaceProbeOAuthKey
+			if test.callerOwn {
+				apiKey = "key-caller-owned-diagnostics"
+				auth = &cliproxyauth.Auth{Attributes: map[string]string{"api_key": apiKey}}
+			}
+			if err := applyClaudeHeaders(req, auth, apiKey, true, nil,
+				test.body, nil, incoming, test.confirmed); err != nil {
+				t.Fatalf("applyClaudeHeaders() error = %v", err)
+			}
+			if got := strings.Count(req.Header.Get("Anthropic-Beta"), claudeCacheDiagnosisBeta); got != test.wantCount {
+				t.Fatalf("diagnostics beta count = %d, want %d: %q", got, test.wantCount, req.Header.Get("Anthropic-Beta"))
+			}
+		})
+	}
+}
+
 // Anthropic refuses a fast-mode request from an account without the matching
 // usage credits with 429 rate_limit_error. The generic pipeline reads 429 as
 // quota exhaustion, cools the credential down and rotates, so one speed:"fast"

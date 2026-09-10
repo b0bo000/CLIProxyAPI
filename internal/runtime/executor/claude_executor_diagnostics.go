@@ -1,10 +1,12 @@
 package executor
 
 import (
+	"bufio"
 	"bytes"
 	"strings"
 
 	claudeauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/claude"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	"github.com/tidwall/gjson"
@@ -12,22 +14,57 @@ import (
 )
 
 type claudeDiagnosticsRequestState struct {
-	key      string
-	sequence uint64
-	promptID string
+	key               string
+	sequence          uint64
+	promptID          string
+	unifiedContinuity bool
+}
+
+// beginClaudeDiagnostics applies the diagnostics policy at the request
+// boundary. Diagnostics is deliberately stricter than the generic CLI profile:
+// only a request whose native Claude Code signals were confirmed may create a
+// continuity generation. Configured-but-unconfirmed profiles must not invent a
+// native diagnostics chain, and caller-owned diagnostics remain untouched.
+func beginClaudeDiagnostics(
+	body []byte,
+	auth *cliproxyauth.Auth,
+	sessionID, baseURL string,
+	softwareProfile helps.ResolvedClaudeSoftwareProfile,
+	injectDiagnostics bool,
+) ([]byte, claudeDiagnosticsRequestState) {
+	if !claudeDiagnosticsEligible(injectDiagnostics, baseURL, softwareProfile) {
+		return body, claudeDiagnosticsRequestState{}
+	}
+	if gjson.GetBytes(body, "diagnostics").Exists() {
+		return body, claudeDiagnosticsRequestState{}
+	}
+	return injectClaudeDiagnostics(body, auth, sessionID)
+}
+
+func claudeDiagnosticsEligible(injectDiagnostics bool, baseURL string, softwareProfile helps.ResolvedClaudeSoftwareProfile) bool {
+	return injectDiagnostics && isAnthropicUpstreamBase(baseURL) && softwareProfile.Confirmed && !softwareProfile.IsHelperProfile()
 }
 
 func injectClaudeDiagnostics(body []byte, auth *cliproxyauth.Auth, sessionID string) ([]byte, claudeDiagnosticsRequestState) {
-	key, sequence, previousMessageID, _, promptID := helps.BeginClaudeContinuity(claudeDiagnosticsCredentialIdentity(auth), sessionID, false, "")
-	return injectClaudeDiagnosticsWithState(body, key, sequence, previousMessageID, promptID)
+	// A diagnostics object supplied by the caller owns its value and its state
+	// lifecycle. Never overwrite it or allocate a CPA continuity generation.
+	if gjson.GetBytes(body, "diagnostics").Exists() {
+		return body, claudeDiagnosticsRequestState{}
+	}
+	key, sequence, previousMessageID := helps.BeginClaudeDiagnostics(claudeDiagnosticsCredentialIdentity(auth), sessionID)
+	return injectClaudeDiagnosticsWithState(body, key, sequence, previousMessageID)
 }
 
 func injectClaudeDiagnosticsWithState(body []byte, key string, sequence uint64, previousMessageID string, promptIDs ...string) ([]byte, claudeDiagnosticsRequestState) {
+	if gjson.GetBytes(body, "diagnostics").Exists() {
+		return body, claudeDiagnosticsRequestState{}
+	}
 	if key == "" {
 		return body, claudeDiagnosticsRequestState{}
 	}
 	promptID := ""
-	if len(promptIDs) > 0 {
+	unifiedContinuity := len(promptIDs) > 0
+	if unifiedContinuity {
 		promptID = promptIDs[0]
 	}
 	value := `{"previous_message_id":null}`
@@ -38,7 +75,7 @@ func injectClaudeDiagnosticsWithState(body []byte, key string, sequence uint64, 
 	if diagnostics := gjson.GetBytes(body, "diagnostics"); diagnostics.Exists() {
 		updated, errSet := sjson.SetRawBytes(body, "diagnostics", []byte(value))
 		if errSet == nil {
-			return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence, promptID: promptID}
+			return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence, promptID: promptID, unifiedContinuity: unifiedContinuity}
 		}
 	}
 	if contextManagement := gjson.GetBytes(body, "context_management"); contextManagement.Exists() {
@@ -50,14 +87,14 @@ func injectClaudeDiagnosticsWithState(body []byte, key string, sequence uint64, 
 			updated = append(updated, `,"diagnostics":`...)
 			updated = append(updated, value...)
 			updated = append(updated, body[insertAt:]...)
-			return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence, promptID: promptID}
+			return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence, promptID: promptID, unifiedContinuity: unifiedContinuity}
 		}
 	}
 	updated, errSet := sjson.SetRawBytes(body, "diagnostics", []byte(value))
 	if errSet != nil {
 		return body, claudeDiagnosticsRequestState{}
 	}
-	return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence, promptID: promptID}
+	return updated, claudeDiagnosticsRequestState{key: key, sequence: sequence, promptID: promptID, unifiedContinuity: unifiedContinuity}
 }
 
 func commitClaudeContinuity(state claudeDiagnosticsRequestState, messageID, requestID string) {
@@ -65,7 +102,15 @@ func commitClaudeContinuity(state claudeDiagnosticsRequestState, messageID, requ
 }
 
 func commitClaudeDiagnostics(state claudeDiagnosticsRequestState, messageID string) {
-	commitClaudeContinuity(state, messageID, "")
+	helps.CommitClaudeDiagnostics(state.key, state.sequence, messageID)
+}
+
+func commitClaudeResponseContinuity(state claudeDiagnosticsRequestState, messageID, requestID string) {
+	if state.unifiedContinuity {
+		commitClaudeContinuity(state, messageID, requestID)
+		return
+	}
+	commitClaudeDiagnostics(state, messageID)
 }
 
 func claudeDiagnosticsCredentialIdentity(auth *cliproxyauth.Auth) string {
@@ -88,38 +133,104 @@ func claudeDiagnosticsCredentialIdentity(auth *cliproxyauth.Auth) string {
 	return ""
 }
 
-func claudeMessageIDFromResponse(data []byte) string {
-	return strings.TrimSpace(gjson.GetBytes(data, "id").String())
+func claudeCaptureProxyCacheKey(cfg *config.Config, auth *cliproxyauth.Auth) string {
+	if auth != nil {
+		if value := strings.TrimSpace(auth.ProxyURL); value != "" {
+			return value
+		}
+	}
+	if cfg != nil {
+		return strings.TrimSpace(cfg.ProxyURL)
+	}
+	return ""
 }
 
-func observeClaudeStreamLine(line []byte, messageID *string, completed *bool) {
+func claudeMessageIDFromResponse(data []byte) string {
+	if !gjson.ValidBytes(data) {
+		return ""
+	}
+	root := gjson.ParseBytes(data)
+	messageType := root.Get("type")
+	messageID := root.Get("id")
+	if !root.IsObject() || messageType.Type != gjson.String || messageType.String() != "message" || messageID.Type != gjson.String {
+		return ""
+	}
+	return strings.TrimSpace(messageID.String())
+}
+
+type claudeDiagnosticsStreamValidation struct {
+	messageID       string
+	hasData         bool
+	hasMessageStart bool
+	hasMessageDelta bool
+	hasMessageStop  bool
+	invalid         bool
+}
+
+func (validation *claudeDiagnosticsStreamValidation) Observe(line []byte) {
 	line = bytes.TrimSpace(line)
 	if !bytes.HasPrefix(line, []byte("data:")) {
 		return
 	}
 	payload := bytes.TrimSpace(line[len("data:"):])
+	if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
+		return
+	}
+	validation.hasData = true
 	if !gjson.ValidBytes(payload) {
+		validation.invalid = true
 		return
 	}
 	root := gjson.ParseBytes(payload)
-	switch root.Get("type").String() {
+	eventType := root.Get("type")
+	if !root.IsObject() || eventType.Type != gjson.String {
+		validation.invalid = true
+		return
+	}
+	if validation.hasMessageStop {
+		validation.invalid = true
+		return
+	}
+	switch eventType.String() {
+	case "error":
+		validation.invalid = true
 	case "message_start":
-		if id := strings.TrimSpace(root.Get("message.id").String()); id != "" {
-			*messageID = id
+		messageID := root.Get("message.id")
+		model := root.Get("message.model")
+		if validation.hasMessageStart || messageID.Type != gjson.String || strings.TrimSpace(messageID.String()) == "" || model.Type != gjson.String || strings.TrimSpace(model.String()) == "" {
+			validation.invalid = true
+			return
 		}
+		validation.messageID = strings.TrimSpace(messageID.String())
+		validation.hasMessageStart = true
+	case "message_delta":
+		if !validation.hasMessageStart {
+			validation.invalid = true
+			return
+		}
+		validation.hasMessageDelta = true
 	case "message_stop":
-		*completed = true
+		if !validation.hasMessageStart || !validation.hasMessageDelta {
+			validation.invalid = true
+			return
+		}
+		validation.hasMessageStop = true
 	}
 }
 
+func (validation claudeDiagnosticsStreamValidation) Complete() bool {
+	return !validation.invalid && validation.hasData && validation.hasMessageStart && validation.hasMessageDelta && validation.hasMessageStop && validation.messageID != ""
+}
+
 func claudeMessageIDFromSSE(data []byte) string {
-	var messageID string
-	completed := false
-	for _, line := range bytes.Split(data, []byte("\n")) {
-		observeClaudeStreamLine(line, &messageID, &completed)
+	validation := claudeDiagnosticsStreamValidation{}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(nil, 52_428_800)
+	for scanner.Scan() {
+		validation.Observe(scanner.Bytes())
 	}
-	if !completed {
+	if scanner.Err() != nil || !validation.Complete() {
 		return ""
 	}
-	return messageID
+	return validation.messageID
 }

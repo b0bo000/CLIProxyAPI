@@ -38,10 +38,47 @@ func ExtractClaudeCodeAgentID(ctx context.Context, headers http.Header) string {
 // ClaudeCodeExecutionScope returns the stable root-session and agent identity used by Codex execution state.
 func ClaudeCodeExecutionScope(ctx context.Context, payload []byte, headers http.Header) (string, bool) {
 	sessionID := ExtractClaudeCodeSessionID(ctx, payload, headers)
+	return ClaudeCodeExecutionScopeForSession(ctx, sessionID, headers)
+}
+
+// ClaudeCodeExecutionScopeForSession builds the execution scope from an
+// already-resolved provider session. It is used when an embedding host supplies
+// the canonical session through executor metadata rather than Claude-specific
+// headers or metadata.user_id.
+func ClaudeCodeExecutionScopeForSession(ctx context.Context, sessionID string, headers http.Header) (string, bool) {
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return "", false
 	}
 	return "claude:" + sessionID + ":agent:" + ExtractClaudeCodeAgentID(ctx, headers), true
+}
+
+// ClaudeCodePromptIDScope returns the scope used by prompt-ID state. The root
+// agent and a child carrying the explicit first-party cc_is_subagent=true
+// marker share the root scope, matching the official parent/child lifecycle.
+// Other agent IDs remain isolated, and malformed or absent markers never cause
+// an untrusted request to inherit the root scope.
+func ClaudeCodePromptIDScope(ctx context.Context, payload []byte, headers http.Header) (string, bool) {
+	sessionID := ExtractClaudeCodeSessionID(ctx, payload, headers)
+	return ClaudeCodePromptIDScopeForSession(ctx, sessionID, payload, headers)
+}
+
+// ClaudeCodePromptIDScopeForSession builds prompt state scope from an
+// already-resolved provider session while retaining the native parent/subagent
+// inheritance rule.
+func ClaudeCodePromptIDScopeForSession(ctx context.Context, sessionID string, payload []byte, headers http.Header) (string, bool) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return "", false
+	}
+	agentID := ExtractClaudeCodeAgentID(ctx, headers)
+	if agentID != ClaudeCodeMainAgentID {
+		isSubagent, found, errMarker := ClaudeCodeSubagentMarkerFromBody(payload)
+		if errMarker == nil && found && isSubagent {
+			agentID = ClaudeCodeMainAgentID
+		}
+	}
+	return "claude:" + sessionID + ":agent:" + agentID, true
 }
 
 func claudeCodeHeader(ctx context.Context, headers http.Header, name string) string {

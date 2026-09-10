@@ -1,0 +1,103 @@
+name: claude-compatibility-regression
+
+on:
+  pull_request:
+    paths:
+      - "internal/config/sdk_config.go"
+      - "internal/config/claude_code_test.go"
+      - "internal/runtime/executor/helps/claude_transport_scope.go"
+      - "internal/runtime/executor/helps/claude_transport_scope_test.go"
+      - "internal/runtime/executor/helps/utls_client.go"
+      - "internal/runtime/executor/helps/utls_client_test.go"
+      - "internal/runtime/executor/claude_executor_*.go"
+      - "internal/watcher/diff/config_diff.go"
+      - "internal/watcher/diff/config_diff_test.go"
+      - "docs/change-cards/CC-20260908-S6D-COMPACT-529-RECOVERY.md"
+      - "docs/change-cards/CC-20260908-S7-TLS-SESSION-POLICY.md"
+      - "docs/change-cards/CC-20260908-S8-RELEASE-INTEGRATION.md"
+      - "docs/change-cards/CC-20260910-S8-V72156-PUBLISH.md"
+      - "docs/CPA-COMPATIBILITY-CHANGE-CONTROL.md"
+      - "docs/deployment/CLAUDE-COMPATIBILITY-RELEASE-PATHS.txt"
+      - ".github/workflows/claude-compatibility-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BASELINE_REF: d1a024e9400bc65bd78ccd908945cf2eacc2835e
+
+jobs:
+  focused-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Baseline focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline="$RUNNER_TEMP/cpa-compat-baseline"
+          git worktree add --detach "$baseline" "$BASELINE_REF"
+          trap 'git worktree remove --force "$baseline"' EXIT
+          (
+            cd "$baseline"
+            go test -count=1 ./internal/config ./internal/runtime/executor/helps ./internal/watcher/diff
+            go test -count=1 ./internal/runtime/executor \
+              -run 'TestClaudeExecutor_CountTokens|TestClaudeExecutorPromptIDCompactBoundaryExcludedAndPostCompactRotates'
+            go test -count=1 ./sdk/cliproxy/auth \
+              -run 'TestManager_ResponsesCompact_|TestManagerClaudeUpstreamFailureStillCoolsCredential'
+          )
+
+      - name: Modified focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cpa-compat-results"
+          go test -count=1 ./internal/config ./internal/runtime/executor/helps ./internal/watcher/diff \
+            | tee "$RUNNER_TEMP/cpa-compat-results/focused.log"
+          go test -count=1 ./internal/runtime/executor \
+            -run 'TestClaudeExecutor_CountTokens|TestClaudeExecutorPromptIDCompactBoundaryExcludedAndPostCompactRotates' \
+            | tee "$RUNNER_TEMP/cpa-compat-results/executor.log"
+          go test -count=1 ./sdk/cliproxy/auth \
+            -run 'TestManager_ResponsesCompact_|TestManagerClaudeUpstreamFailureStillCoolsCredential' \
+            | tee "$RUNNER_TEMP/cpa-compat-results/manager.log"
+
+      - name: Source diff guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          allowed_file=docs/deployment/CLAUDE-COMPATIBILITY-RELEASE-PATHS.txt
+          expected_agents_blob='e5f69340f80c2ab79aa356056a10a15c41d9957d'
+          test -f "$allowed_file"
+          while IFS=$'\t' read -r status path; do
+            [[ -z "$path" ]] && continue
+            if [[ "$path" == artifacts/* ]]; then
+              [[ "$status" == "D" ]] || { echo "artifact path must remain outside source history: $status $path"; exit 1; }
+              continue
+            fi
+            grep -Fqx "$path" "$allowed_file" || { echo "unexpected compatibility diff: $path"; exit 1; }
+            if [[ "$path" == "AGENTS.md" ]]; then
+              actual_agents_blob="$(git rev-parse HEAD:AGENTS.md)"
+              [[ "$actual_agents_blob" == "$expected_agents_blob" ]] || {
+                echo "AGENTS.md differs from the canonical fork policy blob"
+                exit 1
+              }
+            fi
+          done < <(git diff --name-status "$BASELINE_REF"...HEAD)
+
+      - name: Upload focused logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-compatibility-regression-logs
+          path: ${{ runner.temp }}/cpa-compat-results

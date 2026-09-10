@@ -5320,7 +5320,7 @@ func TestClaudeExecutor_SubagentAndProbeOmit1hCacheTTLAndBeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute(subagent) error = %v", err)
 	}
-	if strings.Contains(seenHeaders.Get("Anthropic-Beta"), "extended-cache-ttl-2025-04-11") {
+	if strings.Contains(helps.HeaderValueCaseInsensitive(seenHeaders, "Anthropic-Beta"), "extended-cache-ttl-2025-04-11") {
 		t.Fatalf("subagent must not carry extended-cache-ttl beta, got: %s", seenHeaders.Get("Anthropic-Beta"))
 	}
 	for _, blk := range gjson.GetBytes(seenBody, "system").Array() {
@@ -5360,7 +5360,7 @@ func TestClaudeExecutor_SubagentAndProbeOmit1hCacheTTLAndBeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute(main) error = %v", err)
 	}
-	if !strings.Contains(seenHeaders.Get("Anthropic-Beta"), "extended-cache-ttl-2025-04-11") {
+	if !strings.Contains(helps.HeaderValueCaseInsensitive(seenHeaders, "Anthropic-Beta"), "extended-cache-ttl-2025-04-11") {
 		t.Fatalf("main thread request must carry extended-cache-ttl beta, got: %s", seenHeaders.Get("Anthropic-Beta"))
 	}
 	has1h := false
@@ -6762,13 +6762,16 @@ func TestClaudeExecutor_PayloadReplacesSystemOnOriginalFableReaddsReportingBlock
 func TestClaudeExecutor_UserTitlePromptWithoutSchemaTreatedAsNormalTurn(t *testing.T) {
 	var seenHeaders http.Header
 	var seenBody []byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		seenBody, _ = io.ReadAll(r.Body)
 		seenHeaders = r.Header.Clone()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","model":"claude-sonnet-5","role":"assistant","content":[{"type":"text","text":"ok"}]}`))
-	}))
-	defer server.Close()
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"msg_1","type":"message","model":"claude-sonnet-5","role":"assistant","content":[{"type":"text","text":"ok"}]}`)),
+			Request:    r,
+		}, nil
+	})
 
 	cfg := &config.Config{
 		ClaudeKey: []config.ClaudeKey{{
@@ -6781,14 +6784,15 @@ func TestClaudeExecutor_UserTitlePromptWithoutSchemaTreatedAsNormalTurn(t *testi
 		Metadata: claudeOAuthTestMetadata(),
 		Attributes: map[string]string{
 			"api_key":  "sk-ant-oat-user-title-prompt-test",
-			"base_url": server.URL,
+			"base_url": "https://api.anthropic.com",
 		},
 	}
 
 	executor := NewClaudeExecutor(cfg)
 	// Normal user query with text "Return a short title for this blog post", but NO structured output schema
 	payload := []byte(`{"model":"claude-sonnet-5","messages":[{"role":"user","content":"Return a short title for this blog post"}]}`)
-	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
+	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", http.RoundTripper(transport))
+	_, err := executor.Execute(ctx, auth, cliproxyexecutor.Request{
 		Model:   "claude-sonnet-5",
 		Payload: payload,
 	}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatClaude})
@@ -6808,8 +6812,8 @@ func TestClaudeExecutor_UserTitlePromptWithoutSchemaTreatedAsNormalTurn(t *testi
 	if !has1h {
 		t.Fatalf("user title query must carry 1h cache, got: %s", gjson.GetBytes(seenBody, "system").Raw)
 	}
-	if !strings.Contains(seenHeaders.Get("Anthropic-Beta"), "extended-cache-ttl-2025-04-11") {
-		t.Fatalf("user title query must carry extended-cache-ttl beta, got: %s", seenHeaders.Get("Anthropic-Beta"))
+	if !strings.Contains(helps.HeaderValueCaseInsensitive(seenHeaders, "Anthropic-Beta"), "extended-cache-ttl-2025-04-11") {
+		t.Fatalf("user title query must carry extended-cache-ttl beta, got: %s", helps.HeaderValueCaseInsensitive(seenHeaders, "Anthropic-Beta"))
 	}
 	// 2. Billing header must carry cc_prompt_id
 	billingText := gjson.GetBytes(seenBody, "system.0.text").String()
@@ -9252,14 +9256,19 @@ func TestClaudeExecutor_DisabledThinkingStripsDisplayBeta(t *testing.T) {
 
 func TestClaudeExecutor_CloakModePrefersStoredPrevReqOverCallerFake(t *testing.T) {
 	var seenBodies [][]byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		body, _ := io.ReadAll(r.Body)
 		seenBodies = append(seenBodies, body)
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("request-id", "req_real_upstream_001")
-		_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","model":"claude-sonnet-5","role":"assistant","content":[{"type":"text","text":"ok"}]}`))
-	}))
-	defer server.Close()
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": {"application/json"},
+				"request-id":   {"req_real_upstream_001"},
+			},
+			Body:    io.NopCloser(strings.NewReader(`{"id":"msg_1","type":"message","model":"claude-sonnet-5","role":"assistant","content":[{"type":"text","text":"ok"}]}`)),
+			Request: r,
+		}, nil
+	})
 
 	cfg := &config.Config{
 		ClaudeKey: []config.ClaudeKey{{
@@ -9272,15 +9281,16 @@ func TestClaudeExecutor_CloakModePrefersStoredPrevReqOverCallerFake(t *testing.T
 		Metadata: claudeOAuthTestMetadata(),
 		Attributes: map[string]string{
 			"api_key":  "sk-ant-oat-cloak-prev-req-test",
-			"base_url": server.URL,
+			"base_url": "https://api.anthropic.com",
 		},
 	}
 
 	executor := NewClaudeExecutor(cfg)
 	headers := http.Header{"Session-Id": []string{"sess-test-001"}}
+	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", http.RoundTripper(transport))
 
 	// Turn 1: normal turn, establishes real upstream request-id req_real_upstream_001
-	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
+	_, err := executor.Execute(ctx, auth, cliproxyexecutor.Request{
 		Model:   "claude-sonnet-5",
 		Payload: []byte(`{"model":"claude-sonnet-5","messages":[{"role":"user","content":"turn 1"}]}`),
 	}, cliproxyexecutor.Options{
@@ -9305,7 +9315,7 @@ func TestClaudeExecutor_CloakModePrefersStoredPrevReqOverCallerFake(t *testing.T
 		]
 	}`)
 
-	_, err2 := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
+	_, err2 := executor.Execute(ctx, auth, cliproxyexecutor.Request{
 		Model:   "claude-sonnet-5",
 		Payload: fakeCallerPayload,
 	}, cliproxyexecutor.Options{

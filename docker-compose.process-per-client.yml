@@ -1,0 +1,26 @@
+services:
+  cpa-client-a:
+    image: ${CLI_PROXY_IMAGE:-eceasy/cli-proxy-api:latest}
+    pull_policy: always
+    container_name: ${CPA_A_CONTAINER_NAME:-cli-proxy-api-client-a}
+    ports:
+      - "${CPA_A_PORT:-8318}:8317"
+    volumes:
+      - ${CPA_A_CONFIG_PATH:-./instances/client-a/config.yaml}:/CLIProxyAPI/config.yaml
+      - ${CPA_A_AUTH_PATH:-./instances/client-a/auths}:/root/.cli-proxy-api
+      - ${CPA_A_LOG_PATH:-./instances/client-a/logs}:/CLIProxyAPI/logs
+      - ${CPA_A_PLUGIN_PATH:-./instances/client-a/plugins}:/CLIProxyAPI/plugins
+    restart: unless-stopped
+
+  cpa-client-b:
+    image: ${CLI_PROXY_IMAGE:-eceasy/cli-proxy-api:latest}
+    pull_policy: always
+    container_name: ${CPA_B_CONTAINER_NAME:-cli-proxy-api-client-b}
+    ports:
+      - "${CPA_B_PORT:-8319}:8317"
+    volumes:
+      - ${CPA_B_CONFIG_PATH:-./instances/client-b/config.yaml}:/CLIProxyAPI/config.yaml
+      - ${CPA_B_AUTH_PATH:-./instances/client-b/auths}:/root/.cli-proxy-api
+      - ${CPA_B_LOG_PATH:-./instances/client-b/logs}:/CLIProxyAPI/logs
+      - ${CPA_B_PLUGIN_PATH:-./instances/client-b/plugins}:/CLIProxyAPI/plugins
+    restart: unless-stopped

@@ -24,7 +24,7 @@ const (
 	claudeNativeHelperCoreBetas = "oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05"
 )
 
-func claudeNativeHelperHeaders(betas, compression string) http.Header {
+func claudeNativeHelperHeaders(betas, compression string, structured ...bool) http.Header {
 	headers := http.Header{
 		"Accept":            {"application/json"},
 		"Accept-Encoding":   {compression},
@@ -44,6 +44,9 @@ func claudeNativeHelperHeaders(betas, compression string) http.Header {
 		"X-Stainless-Arch":                          {"arm64"},
 		"X-Stainless-Retry-Count":                   {"0"},
 		"X-Stainless-Timeout":                       {"600"},
+	}
+	if len(structured) > 0 && structured[0] {
+		headers.Set("X-Stainless-Async", "async")
 	}
 	canonical := make(http.Header, len(headers))
 	for name, values := range headers {

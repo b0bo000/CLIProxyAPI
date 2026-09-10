@@ -135,12 +135,18 @@ func (e *ClaudeExecutor) countTokensUpstream(ctx context.Context, auth *cliproxy
 	if len(opts.OriginalRequest) > 0 {
 		originalPayload = opts.OriginalRequest
 	}
-	incomingHeaders, claudeCodeDetection := detectIncomingClaudeCodeRequest(ctx, opts.Headers, originalPayload, true, e.cfg)
-	confirmedClaudeCode := claudeCodeDetection.Confirmed
+	incomingHeaders := resolveIncomingClaudeHeaders(ctx, opts.Headers)
+	configuredCLI := fp.ProfileClaudeCodeCLI
+	softwareProfile, errSoftwareProfile := helps.ResolveClaudeSoftwareProfile(ctx, auth, apiKey, incomingHeaders, originalPayload, true, e.cfg, configuredCLI)
+	if errSoftwareProfile != nil {
+		return cliproxyexecutor.Response{}, errSoftwareProfile
+	}
+	confirmedClaudeCode := softwareProfile.Confirmed
 	claudeSessionID := ""
 	if fp.ProfileClaudeCodeCLI {
 		claudeSessionID = helps.ClaudeAgentSessionUUIDForRequest(incomingHeaders, originalPayload, req.Payload, confirmedClaudeCode, opts.Metadata, req.Metadata)
 	}
+	ctx = beginClaudeCapture(ctx, "count_tokens", incomingHeaders, originalPayload, claudeSessionID, claudeDiagnosticsCredentialIdentity(auth), claudeCaptureProxyCacheKey(e.cfg, auth))
 	// Use streaming translation to preserve function calling, except for claude.
 	stream := from != to
 	body := helps.TranslateRequestWithAPIKeyModelCompatibility(ctx, opts.Headers, e.cfg, from, to, baseModel, req.Payload, stream, helps.APIKeyModelIsCompat(req))
@@ -153,6 +159,7 @@ func (e *ClaudeExecutor) countTokensUpstream(ctx context.Context, auth *cliproxy
 	if rebuildMidSystemMessageEnabled(e.cfg, auth) {
 		body = rebuildMidSystemMessagesToTopLevel(body)
 	}
+	captureClaudeStage(ctx, "translated", body, nil)
 
 	directAnthropic := isAnthropicUpstreamBase(baseURL)
 	// Claude Code's count_tokens carries only model, messages and tools, so the
@@ -173,6 +180,11 @@ func (e *ClaudeExecutor) countTokensUpstream(ctx context.Context, auth *cliproxy
 			body = helps.ObfuscateSensitiveWords(body, helps.BuildSensitiveWordMatcher(settings.sensitiveWords))
 		}
 	}
+	captureClaudeStage(ctx, "after_cloak", body, nil)
+	// count_tokens deliberately skips both Messages-only fields. Identical
+	// snapshots make that non-action explicit instead of leaving evidence gaps.
+	captureClaudeStage(ctx, "after_context_management", body, nil)
+	captureClaudeStage(ctx, "after_diagnostics", body, nil)
 
 	// Keep count_tokens requests compatible with Anthropic cache-control constraints too.
 	body = enforceCacheControlLimit(body, 4)
@@ -211,9 +223,14 @@ func (e *ClaudeExecutor) countTokensUpstream(ctx context.Context, auth *cliproxy
 	if alignCLICountTokensShape {
 		body = util.StripClaudeCodeAttributionSystem(body)
 	}
+	captureClaudeStage(ctx, "after_identity", body, nil)
+	captureClaudeStage(ctx, "after_cch", body, nil)
 	// Runs on the finished body: payload rules can rewrite model and messages
 	// long after translation, so an earlier check would not describe the request
 	// that is about to be sent.
+	if errIdentity := helps.ValidateClaudeBillingSoftwareIdentity(body, softwareProfile, e.cfg); errIdentity != nil {
+		return cliproxyexecutor.Response{}, errIdentity
+	}
 	if errMidSystem := validateClaudeMidSystemMessageModel(body, confirmedClaudeCode, directAnthropic); errMidSystem != nil {
 		return cliproxyexecutor.Response{}, errMidSystem
 	}
@@ -221,7 +238,7 @@ func (e *ClaudeExecutor) countTokensUpstream(ctx context.Context, auth *cliproxy
 	if err != nil {
 		return cliproxyexecutor.Response{}, err
 	}
-	if errHeaders := applyClaudeHeaders(httpReq, auth, apiKey, false, extraBetas, body, e.cfg, incomingHeaders, confirmedClaudeCode && !cloaked, claudeSessionID); errHeaders != nil {
+	if errHeaders := applyClaudeHeadersWithResolvedProfile(httpReq, auth, apiKey, false, extraBetas, body, e.cfg, incomingHeaders, softwareProfile, softwareProfile.IsHelperProfile(), claudeSessionID); errHeaders != nil {
 		return cliproxyexecutor.Response{}, errHeaders
 	}
 	var authID, authLabel, authType, authValue string

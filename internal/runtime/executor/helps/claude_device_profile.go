@@ -253,7 +253,7 @@ func extractClaudeDeviceProfile(headers http.Header, cfg *config.Config) (Claude
 		return ClaudeDeviceProfile{}, false
 	}
 
-	userAgent := strings.TrimSpace(headers.Get("User-Agent"))
+	userAgent := headerValueCaseInsensitive(headers, "User-Agent")
 	version, ok := parseClaudeCLIVersion(userAgent)
 	if !ok || !claudeCodeNativeUserAgentPattern.MatchString(userAgent) {
 		return ClaudeDeviceProfile{}, false
@@ -284,7 +284,7 @@ func firstNonEmptyHeader(headers http.Header, name, fallback string) string {
 	if headers == nil {
 		return fallback
 	}
-	if value := strings.TrimSpace(headers.Get(name)); value != "" {
+	if value := headerValueCaseInsensitive(headers, name); value != "" {
 		return value
 	}
 	return fallback
@@ -587,8 +587,21 @@ func ApplyClaudeDeviceProfileHeaders(r *http.Request, profile ClaudeDeviceProfil
 // current baseline device profile. It extracts the version from the User-Agent.
 func DefaultClaudeVersion(cfg *config.Config) string {
 	profile := defaultClaudeDeviceProfile(cfg)
+	return ClaudeDeviceProfileVersion(profile, cfg)
+}
+
+// ClaudeDeviceProfileVersion returns the version encoded by a resolved device
+// profile. The configured baseline remains the fallback when the profile does
+// not contain a parseable Claude CLI User-Agent.
+func ClaudeDeviceProfileVersion(profile ClaudeDeviceProfile, cfg *config.Config) string {
 	if version, ok := parseClaudeCLIVersion(profile.UserAgent); ok {
 		return strconv.Itoa(version.major) + "." + strconv.Itoa(version.minor) + "." + strconv.Itoa(version.patch)
+	}
+	if cfg != nil {
+		baseline := defaultClaudeDeviceProfile(cfg)
+		if version, ok := parseClaudeCLIVersion(baseline.UserAgent); ok {
+			return strconv.Itoa(version.major) + "." + strconv.Itoa(version.minor) + "." + strconv.Itoa(version.patch)
+		}
 	}
 	return "2.1.258"
 }

@@ -1,0 +1,64 @@
+name: claude-prompt-state-test
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/claude-prompt-state-test.yml"
+      - "docs/change-cards/CC-20260903-S5-2.3-PROMPT-ID-PRESERVATION.md"
+      - "docs/change-cards/CC-20260904-S5-3-PROMPT-ID-GENERATION.md"
+      - "internal/runtime/executor/claude_executor_prompt_state_integration_test.go"
+      - "internal/runtime/executor/claude_executor_prompt_state_test.go"
+      - "internal/runtime/executor/claude_executor_execute.go"
+      - "internal/runtime/executor/claude_executor_stream.go"
+      - "internal/runtime/executor/claude_executor_prev_request_execute_test.go"
+      - "internal/runtime/executor/claude_executor_prev_request_stream_test.go"
+      - "internal/runtime/executor/helps/claude_prompt_state.go"
+      - "internal/runtime/executor/helps/claude_prompt_state_test.go"
+      - "internal/runtime/executor/claude_prompt_id.go"
+
+permissions:
+  contents: read
+
+jobs:
+  focused-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test baseline prompt and prior-request paths
+        shell: bash
+        run: |
+          baseline="$RUNNER_TEMP/cpa-prompt-state-baseline"
+          git worktree add --detach "$baseline" db04147e44aaedd8d6e75b989cf75022aae87dec
+          trap 'git worktree remove --force "$baseline"' EXIT
+          (
+            cd "$baseline"
+            go test -count=1 ./internal/runtime/executor \
+              -run 'Test(ClaudeExecutorPrevRequest|InsertClaudePrevRequestBilling)'
+          )
+      - name: Test modified executor prompt and prior-request paths
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/cpa-prompt-state-results"
+          go test -count=1 ./internal/runtime/executor \
+            -run 'Test(ClaudeExecutorPromptID|ClaudePromptID|BeginClaudePromptID|ClaudeExecutorPrevRequest|InsertClaudePrevRequestBilling)' \
+            | tee "$RUNNER_TEMP/cpa-prompt-state-results/executor.log"
+      - name: Test modified prompt ID parser
+        shell: bash
+        run: |
+          go test -count=1 ./internal/runtime/executor/helps \
+            -run 'Test(ParseClaudePromptIDBillingText|BeginClaudePromptID|ClaudePromptID)' \
+            | tee "$RUNNER_TEMP/cpa-prompt-state-results/helps.log"
+      - name: Upload focused test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-prompt-state-test-logs
+          path: ${{ runner.temp }}/cpa-prompt-state-results

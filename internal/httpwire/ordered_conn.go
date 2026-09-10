@@ -38,6 +38,15 @@ type orderedRequestConn struct {
 	chunked       *chunkedRequestTracker
 }
 
+// Unwrap exposes the connection only to observability code. Request writes
+// continue to pass through orderedRequestConn so header ordering is preserved.
+func (c *orderedRequestConn) Unwrap() net.Conn {
+	if c == nil {
+		return nil
+	}
+	return c.Conn
+}
+
 func (c *orderedRequestConn) Write(p []byte) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

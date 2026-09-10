@@ -27,10 +27,20 @@ import (
 func resolveIncomingClaudeHeaders(ctx context.Context, incoming http.Header) http.Header {
 	resolved := make(http.Header)
 	if ginCtx, ok := ctx.Value("gin").(*gin.Context); ok && ginCtx != nil && ginCtx.Request != nil {
-		resolved = ginCtx.Request.Header.Clone()
+		for key, values := range ginCtx.Request.Header {
+			canonical := http.CanonicalHeaderKey(key)
+			resolved[canonical] = append(resolved[canonical], values...)
+		}
 	}
+	incomingCanonical := make(http.Header)
 	for key, values := range incoming {
-		resolved[key] = append([]string(nil), values...)
+		canonical := http.CanonicalHeaderKey(key)
+		incomingCanonical[canonical] = append(incomingCanonical[canonical], values...)
+	}
+	for key, values := range incomingCanonical {
+		// Request options override the Gin envelope, matching the pre-profile
+		// behavior while still normalizing hand-built non-canonical maps.
+		resolved[key] = values
 	}
 	return resolved
 }
@@ -215,6 +225,23 @@ func claudeBillingFingerprintMessageText(payload []byte) string {
 }
 
 func claudeCCHFallbackBillingHeader(ctx context.Context, cfg *config.Config, payload []byte, entrypoint string) string {
+	return claudeCCHFallbackBillingHeaderWithProfile(ctx, cfg, payload, helps.ResolvedClaudeSoftwareProfile{
+		Entrypoint: entrypoint,
+		Provenance: helps.ClaudeSoftwareProfileDetected,
+	})
+}
+
+func claudeCCHFallbackBillingHeaderWithProfile(ctx context.Context, cfg *config.Config, payload []byte, profile helps.ResolvedClaudeSoftwareProfile) string {
+	entrypoint := "cli"
+	if profile.Provenance != helps.ClaudeSoftwareProfileUnknown {
+		if resolvedEntrypoint := strings.TrimSpace(profile.Entrypoint); resolvedEntrypoint != "" {
+			entrypoint = resolvedEntrypoint
+		}
+	}
+	version := helps.DefaultClaudeVersion(cfg)
+	if profile.Provenance != helps.ClaudeSoftwareProfileUnknown && profile.Device.UserAgent != "" {
+		version = helps.ClaudeDeviceProfileVersion(profile.Device, cfg)
+	}
 	isProbeOrHelper := helps.IsClaudeProbeOrHelperRequest(payload)
 	prevReq, promptID := helps.ExtractClaudeBillingTags(payload)
 	if !isProbeOrHelper {
@@ -230,7 +257,7 @@ func claudeCCHFallbackBillingHeader(ctx context.Context, cfg *config.Config, pay
 	isSubagent := helps.IsClaudeSubagentRequest(incomingHeaders, payload)
 	return generateBillingHeader(
 		true,
-		helps.DefaultClaudeVersion(cfg),
+		version,
 		claudeBillingFingerprintMessageText(payload),
 		entrypoint,
 		getWorkloadFromContext(ctx),
@@ -1305,7 +1332,21 @@ func applyCloaking(
 	confirmedClaudeCode bool,
 	cchSigning bool,
 ) ([]byte, bool, error) {
-	return applyCloakingInternal(ctx, cfg, auth, payload, apiKey, confirmedClaudeCode, cchSigning, true)
+	return applyCloakingWithResolvedProfileInternal(ctx, cfg, auth, payload, apiKey, helps.ResolvedClaudeSoftwareProfile{
+		Confirmed: confirmedClaudeCode,
+	}, cchSigning, true)
+}
+
+func applyCloakingWithResolvedProfile(
+	ctx context.Context,
+	cfg *config.Config,
+	auth *cliproxyauth.Auth,
+	payload []byte,
+	apiKey string,
+	softwareProfile helps.ResolvedClaudeSoftwareProfile,
+	cchSigning bool,
+) ([]byte, bool, error) {
+	return applyCloakingWithResolvedProfileInternal(ctx, cfg, auth, payload, apiKey, softwareProfile, cchSigning, true)
 }
 
 func applyCloakingInternal(
@@ -1318,6 +1359,22 @@ func applyCloakingInternal(
 	cchSigning bool,
 	obfuscateSensitiveWords bool,
 ) ([]byte, bool, error) {
+	return applyCloakingWithResolvedProfileInternal(ctx, cfg, auth, payload, apiKey, helps.ResolvedClaudeSoftwareProfile{
+		Confirmed: confirmedClaudeCode,
+	}, cchSigning, obfuscateSensitiveWords)
+}
+
+func applyCloakingWithResolvedProfileInternal(
+	ctx context.Context,
+	cfg *config.Config,
+	auth *cliproxyauth.Auth,
+	payload []byte,
+	apiKey string,
+	softwareProfile helps.ResolvedClaudeSoftwareProfile,
+	cchSigning bool,
+	obfuscateSensitiveWords bool,
+) ([]byte, bool, error) {
+	confirmedClaudeCode := softwareProfile.Confirmed
 	policy, settings := resolveClaudeWirePolicy(cfg, auth, apiKey, confirmedClaudeCode)
 	if !policy.Cloak {
 		return payload, false, nil
@@ -1331,8 +1388,16 @@ func applyCloakingInternal(
 	}
 
 	billingVersion := helps.DefaultClaudeVersion(cfg)
+	billingEntrypoint := "cli"
+	if softwareProfile.Provenance != helps.ClaudeSoftwareProfileUnknown {
+		if entrypoint := strings.TrimSpace(softwareProfile.Entrypoint); entrypoint != "" {
+			billingEntrypoint = entrypoint
+		}
+		if softwareProfile.Device.UserAgent != "" {
+			billingVersion = helps.ClaudeDeviceProfileVersion(softwareProfile.Device, cfg)
+		}
+	}
 	workload := getWorkloadFromContext(ctx)
-
 	isProbeOrHelper := helps.IsClaudeProbeOrHelperRequest(payload)
 	isSubagent := false
 	prevReq := ""
@@ -1340,36 +1405,41 @@ func applyCloakingInternal(
 	if !isProbeOrHelper {
 		incomingHeaders := resolveIncomingClaudeHeaders(ctx, helps.IncomingHeadersFromContext(ctx))
 		isSubagent = helps.IsClaudeSubagentRequest(incomingHeaders, payload)
-		existingPrevReq, existingPromptID := helps.ExtractClaudeBillingTags(payload)
-
-		sessionID := helps.ClaudeSessionIDFromContext(ctx)
-		if sessionID == "" && auth != nil {
-			sessionID = helps.ClaudeAgentSessionUUIDForRequest(incomingHeaders, payload, payload, confirmedClaudeCode)
-		}
-
-		if sessionID != "" && auth != nil {
-			credIdentity := claudeDiagnosticsCredentialIdentity(auth)
-			isNewTurn := helps.IsClaudeNewPromptTurn(payload)
-			continuityKey, seq, prevMsgID, storedPrevReq, storedPromptID := helps.BeginClaudeContinuity(credIdentity, sessionID, isNewTurn, existingPromptID)
-
-			if existingPromptID != "" {
-				promptID = existingPromptID
-			} else {
-				promptID = storedPromptID
-			}
-			if storedPrevReq != "" {
-				prevReq = storedPrevReq
-			} else {
-				prevReq = existingPrevReq
+		// The full executor owns the stricter, independently gated diagnostics,
+		// previous-request and prompt-ID state machines after payload rewrites. The
+		// direct helper keeps upstream's unified compatibility path for callers that
+		// invoke cloaking by itself. In the executor path, caller-supplied tags are
+		// deliberately discarded with the caller billing block before the managed
+		// state machines insert authoritative values.
+		if obfuscateSensitiveWords {
+			existingPrevReq, existingPromptID := helps.ExtractClaudeBillingTags(payload)
+			prevReq = existingPrevReq
+			promptID = existingPromptID
+			sessionID := helps.ClaudeSessionIDFromContext(ctx)
+			if sessionID == "" && auth != nil {
+				sessionID = helps.ClaudeAgentSessionUUIDForRequest(incomingHeaders, payload, payload, confirmedClaudeCode)
 			}
 
-			if continuityCtx := helps.ClaudeContinuityContextFromContext(ctx); continuityCtx != nil {
-				continuityCtx.Key = continuityKey
-				continuityCtx.Sequence = seq
-				continuityCtx.PreviousMessageID = prevMsgID
-				continuityCtx.PreviousRequestID = prevReq
-				continuityCtx.PromptID = promptID
-				continuityCtx.Initialized = true
+			if sessionID != "" && auth != nil {
+				credIdentity := claudeDiagnosticsCredentialIdentity(auth)
+				isNewTurn := helps.IsClaudeNewPromptTurn(payload)
+				continuityKey, seq, prevMsgID, storedPrevReq, storedPromptID := helps.BeginClaudeContinuity(credIdentity, sessionID, isNewTurn, existingPromptID)
+
+				if existingPromptID == "" {
+					promptID = storedPromptID
+				}
+				if storedPrevReq != "" {
+					prevReq = storedPrevReq
+				}
+
+				if continuityCtx := helps.ClaudeContinuityContextFromContext(ctx); continuityCtx != nil {
+					continuityCtx.Key = continuityKey
+					continuityCtx.Sequence = seq
+					continuityCtx.PreviousMessageID = prevMsgID
+					continuityCtx.PreviousRequestID = prevReq
+					continuityCtx.PromptID = promptID
+					continuityCtx.Initialized = true
+				}
 			}
 		}
 	}
@@ -1379,7 +1449,7 @@ func applyCloakingInternal(
 		settings.strictMode,
 		cchSigning,
 		billingVersion,
-		"cli",
+		billingEntrypoint,
 		workload,
 		claudeCodeCurrentTime(cfg, auth),
 		isSubagent,

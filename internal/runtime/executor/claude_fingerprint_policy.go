@@ -37,7 +37,9 @@ var claudeFingerprintProfileWarned sync.Map
 // Real Claude OAuth tokens always keep the strict CLI fingerprint. First-party
 // api.anthropic.com API keys stay caller-owned by default and only take the CLI
 // Messages fingerprint when this field is set. MCP aliases and diagnostics are
-// wire fingerprint behavior; refresh, profile and cancellation stay gated on
+// wire fingerprint behavior. Prev-request continuity has its own eligibility
+// result and is passed explicitly to the request lifecycle; it is not inferred
+// from InjectDiagnostics. Refresh, profile and cancellation stay gated on
 // AuthIsOAuthToken.
 type claudeFingerprintPolicy struct {
 	AuthIsOAuthToken     bool
@@ -47,6 +49,7 @@ type claudeFingerprintPolicy struct {
 	SynthesizeIdentity   bool
 	MCPAlias             bool
 	InjectDiagnostics    bool
+	InjectPrevRequest    bool
 	OAuthCancellation    bool
 }
 
@@ -108,8 +111,16 @@ func resolveClaudeFingerprintPolicy(cfg *config.Config, auth *cliproxyauth.Auth,
 		SynthesizeIdentity:   profileClaudeCodeCLI && !authIsOAuth,
 		MCPAlias:             profileClaudeCodeCLI,
 		InjectDiagnostics:    profileClaudeCodeCLI,
+		InjectPrevRequest:    profileClaudeCodeCLI,
 		OAuthCancellation:    authIsOAuth,
 	}
+}
+
+// claudePrevRequestPolicyEnabled combines the credential/profile policy with
+// request-level native confirmation. Diagnostics has no role in this decision:
+// callers may enable either continuity feature independently.
+func claudePrevRequestPolicyEnabled(policy claudeFingerprintPolicy, confirmedNative bool) bool {
+	return policy.InjectPrevRequest || confirmedNative
 }
 
 // applyClaudeCLIIdentity applies the Claude Code CLI credential identity to the

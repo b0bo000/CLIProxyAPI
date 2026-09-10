@@ -187,8 +187,51 @@ func TestResolveClaudeFingerprintPolicy(t *testing.T) {
 			if fp.InjectDiagnostics != tt.wantDiagnostics {
 				t.Fatalf("InjectDiagnostics = %v, want %v", fp.InjectDiagnostics, tt.wantDiagnostics)
 			}
+			if fp.InjectPrevRequest != tt.wantProfileOAuth {
+				t.Fatalf("InjectPrevRequest = %v, want %v", fp.InjectPrevRequest, tt.wantProfileOAuth)
+			}
 			if fp.OAuthCancellation != tt.wantCancellation {
 				t.Fatalf("OAuthCancellation = %v, want %v", fp.OAuthCancellation, tt.wantCancellation)
+			}
+		})
+	}
+}
+
+func TestClaudePrevRequestPolicyIsIndependentFromDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name            string
+		policy          claudeFingerprintPolicy
+		confirmedNative bool
+		wantEnabled     bool
+	}{
+		{
+			name:        "diagnostics on prev request off",
+			policy:      claudeFingerprintPolicy{InjectDiagnostics: true},
+			wantEnabled: false,
+		},
+		{
+			name:        "diagnostics off prev request on",
+			policy:      claudeFingerprintPolicy{InjectPrevRequest: true},
+			wantEnabled: true,
+		},
+		{
+			name:            "confirmed native enables continuity",
+			policy:          claudeFingerprintPolicy{InjectDiagnostics: false},
+			confirmedNative: true,
+			wantEnabled:     true,
+		},
+		{
+			name:        "both disabled",
+			policy:      claudeFingerprintPolicy{},
+			wantEnabled: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := claudePrevRequestPolicyEnabled(tc.policy, tc.confirmedNative); got != tc.wantEnabled {
+				t.Fatalf("claudePrevRequestPolicyEnabled(%+v, %t) = %t, want %t", tc.policy, tc.confirmedNative, got, tc.wantEnabled)
 			}
 		})
 	}
@@ -511,7 +554,7 @@ func TestClaudeExecutor_OfficialAPIKeyDefaultPreservesCallerCCH(t *testing.T) {
 	}
 }
 
-func TestClaudeExecutor_OfficialAPIKeyClaudeCodeCLIFingerprintIncludesDiagnostics(t *testing.T) {
+func TestClaudeExecutor_OfficialAPIKeyClaudeCodeCLIFingerprintDoesNotInventDiagnostics(t *testing.T) {
 	var seenBody []byte
 	var seenHeaders http.Header
 	transport := claudeFingerprintRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -550,8 +593,8 @@ func TestClaudeExecutor_OfficialAPIKeyClaudeCodeCLIFingerprintIncludesDiagnostic
 	if errExecute != nil {
 		t.Fatalf("Execute() error = %v", errExecute)
 	}
-	if diagnostics := gjson.GetBytes(seenBody, "diagnostics"); !diagnostics.IsObject() {
-		t.Fatalf("diagnostics = %s, want object after fingerprint-profile opt-in", diagnostics.Raw)
+	if diagnostics := gjson.GetBytes(seenBody, "diagnostics"); diagnostics.Exists() {
+		t.Fatalf("diagnostics = %s, configured-but-unconfirmed profile must not invent native state", diagnostics.Raw)
 	}
 	// api.anthropic.com is the one API-key origin where native emits cch, so the
 	// opt-in must produce a finalized signature here.
@@ -570,8 +613,8 @@ func TestClaudeExecutor_OfficialAPIKeyClaudeCodeCLIFingerprintIncludesDiagnostic
 	if !strings.Contains(betas, "oauth-2025-04-20") {
 		t.Fatalf("Anthropic-Beta = %q, want oauth beta after fingerprint-profile opt-in", betas)
 	}
-	if !strings.Contains(betas, claudeCacheDiagnosisBeta) {
-		t.Fatalf("Anthropic-Beta = %q, want %q", betas, claudeCacheDiagnosisBeta)
+	if strings.Contains(betas, claudeCacheDiagnosisBeta) {
+		t.Fatalf("Anthropic-Beta = %q, configured-but-unconfirmed profile must not claim diagnostics", betas)
 	}
 	if got := claudeFingerprintHeaderValue(seenHeaders, "x-api-key"); got != "key-official-fp" {
 		t.Fatalf("x-api-key = %q, want API key auth", got)

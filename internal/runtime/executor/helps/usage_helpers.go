@@ -531,6 +531,16 @@ type usageTTFTRoundTripper struct {
 	packetOnly bool
 }
 
+// ClaudeTransportCaptureIdentity forwards the opt-in capture identity through
+// the usage/TTFT decorator without exposing transport internals to production
+// logging or request handling.
+func (t usageTTFTRoundTripper) ClaudeTransportCaptureIdentity() string {
+	if identifiable, ok := t.base.(interface{ ClaudeTransportCaptureIdentity() string }); ok {
+		return identifiable.ClaudeTransportCaptureIdentity()
+	}
+	return ""
+}
+
 func (t usageTTFTRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	cliproxyexecutor.MarkUpstreamAttempt(req.Context())
 	t.reporter.StartResponseTTFT()

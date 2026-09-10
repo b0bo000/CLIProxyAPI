@@ -157,6 +157,14 @@ func newClaudeCodeTLSConfig(host string, sessionCache tls.ClientSessionCache) *t
 	}
 }
 
+func newClaudeCodeTLSConfigForPolicy(host string, tlsSessionResumption bool) *tls.Config {
+	var sessionCache tls.ClientSessionCache
+	if tlsSessionResumption {
+		sessionCache = tls.NewLRUClientSessionCache(claudeCodeSessionCacheCapacity)
+	}
+	return newClaudeCodeTLSConfig(host, sessionCache)
+}
+
 // claudeCodeTLSClientHelloSpec reproduces the deterministic Node/OpenSSL
 // ClientHello emitted by Claude Code 2.1.220 on macOS arm64. Keep this spec in
 // sync with a fresh native capture whenever the advertised Claude Code version
@@ -217,9 +225,9 @@ func claudeCodeTLSClientHelloSpec() *tls.ClientHelloSpec {
 
 const claudeCodeRoundTripperCacheCapacity = 64
 
-var claudeCodeRoundTripperCache = internalcache.NewBoundedLRU[string, http.RoundTripper](
+var claudeCodeRoundTripperCache = internalcache.NewBoundedLRU[claudeCodeTransportCacheKey, http.RoundTripper](
 	claudeCodeRoundTripperCacheCapacity,
-	func(_ string, roundTripper http.RoundTripper) {
+	func(_ claudeCodeTransportCacheKey, roundTripper http.RoundTripper) {
 		if transport, ok := roundTripper.(interface{ CloseIdleConnections() }); ok {
 			transport.CloseIdleConnections()
 		}
@@ -283,15 +291,35 @@ func claudeCodeRequestHeaderOrder(_, requestTarget string) []string {
 }
 
 func cachedClaudeCodeRoundTripper(proxyURL string) http.RoundTripper {
-	return claudeCodeRoundTripperCache.GetOrAdd(proxyURL, func() http.RoundTripper {
-		return newClaudeCodeRoundTripper(proxyURL)
+	return cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, nil, nil)
+}
+
+func cachedClaudeCodeRoundTripperForAuth(proxyURL string, auth *cliproxyauth.Auth) http.RoundTripper {
+	return cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL, auth, nil)
+}
+
+func cachedClaudeCodeRoundTripperForAuthAndOwner(proxyURL string, auth *cliproxyauth.Auth, owner *claudeCodeTransportOwnerToken) http.RoundTripper {
+	return cachedClaudeCodeRoundTripperForAuthOwnerAndPolicy(proxyURL, auth, owner, true)
+}
+
+func cachedClaudeCodeRoundTripperForAuthOwnerAndPolicy(proxyURL string, auth *cliproxyauth.Auth, owner *claudeCodeTransportOwnerToken, tlsSessionResumption bool) http.RoundTripper {
+	key, cacheable := claudeCodeTransportCacheKeyForAuthOwnerAndPolicy(proxyURL, auth, owner, tlsSessionResumption)
+	if !cacheable {
+		return newClaudeCodeRoundTripperWithPolicy(proxyURL, tlsSessionResumption)
+	}
+	return claudeCodeRoundTripperCache.GetOrAdd(key, func() http.RoundTripper {
+		return newClaudeCodeRoundTripperWithPolicy(proxyURL, tlsSessionResumption)
 	})
 }
 
 func newClaudeCodeRoundTripper(proxyURL string) http.RoundTripper {
+	return newClaudeCodeRoundTripperWithPolicy(proxyURL, true)
+}
+
+func newClaudeCodeRoundTripperWithPolicy(proxyURL string, tlsSessionResumption bool) http.RoundTripper {
 	// The cache is scoped to this round tripper, which is already keyed by proxy,
 	// so resumption never crosses proxy boundaries.
-	sessionCache := tls.NewLRUClientSessionCache(claudeCodeSessionCacheCapacity)
+	sessionCache := newClaudeCodeTLSConfigForPolicy("api.anthropic.com", tlsSessionResumption).ClientSessionCache
 	var dialer proxy.Dialer = proxy.Direct
 	if proxyURL != "" {
 		proxyDialer, mode, errBuild := proxyutil.BuildDialer(proxyURL)
@@ -352,6 +380,17 @@ type fallbackRoundTripper struct {
 	fallback  http.RoundTripper
 }
 
+// ClaudeTransportCaptureIdentity returns a process-local identity for the
+// cached Anthropic RoundTripper selected by this client. The value is consumed
+// only by the opt-in CPA_CLAUDE_CAPTURE_DIR instrumentation and is hashed
+// before it is written to disk.
+func (f *fallbackRoundTripper) ClaudeTransportCaptureIdentity() string {
+	if f == nil || f.anthropic == nil {
+		return ""
+	}
+	return fmt.Sprintf("%p", f.anthropic)
+}
+
 func (f *fallbackRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if IsAnthropicUpstreamURL(req.URL) {
 		return f.anthropic.RoundTrip(req)
@@ -381,7 +420,12 @@ func NewUtlsHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyau
 	}
 
 	var chromeRT http.RoundTripper = newUtlsRoundTripper(proxyURL)
-	var anthropicRT http.RoundTripper = cachedClaudeCodeRoundTripper(proxyURL)
+	owner, hasOwner := claudeCodeTransportOwnerFromContext(ctx)
+	if !hasOwner && ClaudeCodeSessionScopedTransportEnabled(cfg) {
+		owner, _ = claudeCodeSessionTransportOwner(ctx)
+	}
+	tlsSessionResumption := ClaudeCodeTLSSessionResumptionEnabled(cfg)
+	var anthropicRT http.RoundTripper = cachedClaudeCodeRoundTripperForAuthOwnerAndPolicy(proxyURL, auth, owner, tlsSessionResumption)
 	var standardTransport http.RoundTripper = http.DefaultTransport
 	if proxyURL != "" {
 		if transport := buildProxyTransport(proxyURL); transport != nil {
