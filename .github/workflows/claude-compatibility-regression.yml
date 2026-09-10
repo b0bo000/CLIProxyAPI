@@ -15,7 +15,9 @@ on:
       - "docs/change-cards/CC-20260908-S6D-COMPACT-529-RECOVERY.md"
       - "docs/change-cards/CC-20260908-S7-TLS-SESSION-POLICY.md"
       - "docs/change-cards/CC-20260908-S8-RELEASE-INTEGRATION.md"
+      - "docs/change-cards/CC-20260910-S8-V72156-PUBLISH.md"
       - "docs/CPA-COMPATIBILITY-CHANGE-CONTROL.md"
+      - "docs/deployment/CLAUDE-COMPATIBILITY-RELEASE-PATHS.txt"
       - ".github/workflows/claude-compatibility-regression.yml"
   workflow_dispatch:
 
@@ -23,7 +25,7 @@ permissions:
   contents: read
 
 env:
-  BASELINE_REF: 586e4360bf655d7d6e22287aeda3cc4750f2fecf
+  BASELINE_REF: d1a024e9400bc65bd78ccd908945cf2eacc2835e
 
 jobs:
   focused-regression:
@@ -74,18 +76,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          allowed='^(AGENTS\.md|config\.example\.yaml|internal/config/claude_code_test\.go|internal/config/sdk_config\.go|internal/runtime/executor/helps/(claude_transport_scope|claude_transport_scope_test|utls_client|utls_client_test)\.go|internal/watcher/diff/config_diff(_test)?\.go|docs/change-cards/CC-20260908-(S6D-COMPACT-529-RECOVERY|S7-TLS-SESSION-POLICY|S8-RELEASE-INTEGRATION)\.md|\.github/workflows/claude-compatibility-regression\.yml|docs/deployment/CLAUDE-COMPATIBILITY-RELEASE\.md|docs/CPA-COMPATIBILITY-CHANGE-CONTROL\.md|scripts/verify-claude-compatibility-release\.ps1)$'
-          expected_agents_blob='57027473d7b65be22e86a0ab2172c9a09a4e495d'
-          git diff --name-only "$BASELINE_REF"...HEAD | while IFS= read -r path; do
-          [[ "$path" =~ $allowed ]] || { echo "unexpected compatibility diff: $path"; exit 1; }
-          if [[ "$path" == "AGENTS.md" ]]; then
-            actual_agents_blob="$(git rev-parse HEAD:AGENTS.md)"
-            [[ "$actual_agents_blob" == "$expected_agents_blob" ]] || {
-              echo "AGENTS.md differs from the canonical fork policy blob"
-              exit 1
-            }
-          fi
-          done
+          allowed_file=docs/deployment/CLAUDE-COMPATIBILITY-RELEASE-PATHS.txt
+          expected_agents_blob='e5f69340f80c2ab79aa356056a10a15c41d9957d'
+          test -f "$allowed_file"
+          while IFS=$'\t' read -r status path; do
+            [[ -z "$path" ]] && continue
+            if [[ "$path" == artifacts/* ]]; then
+              [[ "$status" == "D" ]] || { echo "artifact path must remain outside source history: $status $path"; exit 1; }
+              continue
+            fi
+            grep -Fqx "$path" "$allowed_file" || { echo "unexpected compatibility diff: $path"; exit 1; }
+            if [[ "$path" == "AGENTS.md" ]]; then
+              actual_agents_blob="$(git rev-parse HEAD:AGENTS.md)"
+              [[ "$actual_agents_blob" == "$expected_agents_blob" ]] || {
+                echo "AGENTS.md differs from the canonical fork policy blob"
+                exit 1
+              }
+            fi
+          done < <(git diff --name-status "$BASELINE_REF"...HEAD)
 
       - name: Upload focused logs
         if: always()

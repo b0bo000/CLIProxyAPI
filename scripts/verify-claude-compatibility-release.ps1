@@ -22,7 +22,9 @@ if (-not (Test-Path -LiteralPath $Manifest -PathType Leaf)) {
 $required = @(
     "docs/change-cards/CC-20260908-S6D-COMPACT-529-RECOVERY.md",
     "docs/change-cards/CC-20260908-S7-TLS-SESSION-POLICY.md",
-    "docs/change-cards/CC-20260908-S8-RELEASE-INTEGRATION.md"
+    "docs/change-cards/CC-20260908-S8-RELEASE-INTEGRATION.md",
+    "docs/change-cards/CC-20260910-S8-V72156-PUBLISH.md",
+    "docs/deployment/CLAUDE-COMPATIBILITY-RELEASE-PATHS.txt"
 )
 foreach ($path in $required) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {

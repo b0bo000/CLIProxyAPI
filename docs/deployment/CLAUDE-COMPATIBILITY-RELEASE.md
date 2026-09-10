@@ -7,12 +7,11 @@ It records what the code changes control and what the evidence does not prove.
 
 ## Candidate identity
 
-- Audit baseline: Claude Code `2.1.241`, CPA `7.2.140`.
-- Development branch: `feat/s6b-404-recovery`.
-- Release branch: `release/claude-compatibility-20260908` (local candidate; remote
-  push and GitHub Actions run are still pending).
+- Audit baseline: Claude Code `2.1.241`, CPA `7.2.156`.
+- Development branch: `feat/release-gate-v7.2.156-20260910`.
+- Release branch: `release/claude-compatibility-v7.2.156-20260910` (local candidate; remote push and GitHub Actions are pending).
 - Candidate commit/tag: the local guard-correction candidate is
-  `e254dd4eca87281cab3dcd5154a2715830f2db49`; the preflight still emits
+  `2ec017db0fd0505a656846c83d369462b6b74fe0`; the preflight still emits
   `COMMIT=<sha>` for the exact release ref and stores it with release evidence.
 
 ## Included validated scopes
@@ -71,3 +70,10 @@ Preflight command:
 ```powershell
 ./scripts/verify-claude-compatibility-release.ps1
 ```
+
+## v7.2.156 release-gate update
+
+- Upstream baseline: `d1a024e9400bc65bd78ccd908945cf2eacc2835e` (`v7.2.156`).
+- Release candidate: `release/claude-compatibility-v7.2.156-20260910` at `2ec017db0fd0505a656846c83d369462b6b74fe0`.
+- The compatibility workflow is pinned to the upstream tag commit and reads its allowlist from `docs/deployment/CLAUDE-COMPATIBILITY-RELEASE-PATHS.txt`.
+- Experiment evidence remains outside the source repository under the local artifacts tree.
