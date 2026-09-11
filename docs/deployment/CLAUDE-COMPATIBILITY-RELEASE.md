@@ -9,9 +9,9 @@ It records what the code changes control and what the evidence does not prove.
 
 - Audit baseline: Claude Code `2.1.241`, CPA `7.2.156`.
 - Development branch: `feat/release-gate-v7.2.156-20260910`.
-- Release branch: `release/claude-compatibility-v7.2.156-20260910` (local candidate; remote push and GitHub Actions are pending).
+- Release branch: `release/claude-compatibility-v7.2.156-20260910` (pushed; GitHub Actions passed for the publication gate).
 - Candidate commit/tag: the local guard-correction candidate is
-  `2ec017db0fd0505a656846c83d369462b6b74fe0`; the preflight still emits
+  `80064bfcb30e0430390d0ea8db1e256faae445b3` (publication commit); the preflight emits
   `COMMIT=<sha>` for the exact release ref and stores it with release evidence.
 
 ## Included validated scopes
@@ -39,9 +39,9 @@ headers, body fields, IDs, model/tools, OAuth, proxy, or control-plane TLS.
 Run `.github/workflows/claude-compatibility-regression.yml` and retain its
 artifact logs. The workflow runs baseline and modified focused tests, S6
 compact/count_tokens tests, S7 policy tests, and an allowed-path source diff
-guard. The local preflight emits the exact candidate commit; the evidence
-records the latest result. No remote workflow run is claimed until a GitHub
-Actions run ID is available.
+guard. The local preflight emits the exact candidate commit. The publication gate
+passed in GitHub Actions; the run IDs are recorded in the change card and canonical
+evidence.
 
 The S8 source-diff guard permits the historical `AGENTS.md` tree delta only
 when the file's blob matches the canonical fork-policy SHA-1
